@@ -46,18 +46,6 @@ blur, and a code-rendered "mercury drop" identity. Its signature interaction is 
 - **Self-tracked usage gauge** — a local % ring for a user-defined window (default
   5h). You start/reset the window yourself.
 
-## Scope — deliberately excluded
-
-This build intentionally omits three things from the original brief, because they
-are anti-user or reverse-engineer another service:
-
-- ❌ Reading Claude's private `~/Library/Application Support/Claude/` files or any
-  undocumented `five_hour` endpoint → replaced by the **self-tracked** gauge.
-- ❌ Unattended auto-submit looped to a usage-window reset → replaced by **attended,
-  confirmed** automation.
-- ❌ "Session lock" that blocks closing / force-reopens the target app → replaced by a
-  **passive notification**.
-
 ## App icon — native Liquid Glass `.icon`
 
 The icon is a real Icon Composer **`.icon`** bundle (the macOS 26 Liquid Glass format,

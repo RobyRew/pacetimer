@@ -354,7 +354,8 @@ struct SettingsPanel: View {
             }
 
             Toggle("Prevent sleep during countdown", isOn: $engine.preventSleep)
-            Toggle("Auto-paste note on finish (asks first)", isOn: $engine.attendedAutomation)
+            // Replace the old Toggle("Auto-paste note on finish (asks first)") with:
+            Toggle("Unattended auto-paste on finish", isOn: $engine.unattendedAutomation)
 
             Spacer(minLength: 0)
         }

@@ -8,7 +8,6 @@
 //  self-tracked, automation asks for explicit confirmation, and the fallback is a
 //  passive notification.
 //
-
 import SwiftUI
 import AppKit
 import CoreGraphics
@@ -32,10 +31,6 @@ enum AITarget: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Best-known bundle identifiers, tried in order. These can change between
-    /// releases — verify on your machine with, e.g.:
-    ///     osascript -e 'id of app "Claude"'
-    /// and edit here if a launch fails.
     var bundleIDs: [String] {
         switch self {
         case .claude:     return ["com.anthropic.claudefordesktop", "com.anthropic.claude"]
@@ -56,13 +51,13 @@ final class TimerEngine: ObservableObject {
     @Published private(set) var remaining: TimeInterval = 0
     @Published private(set) var isRunning = false
 
-    // User content / settings (persisted via didSet — note: init assignments don't fire didSet)
+    // User content / settings
     @Published var notes: String            { didSet { persist("notes", notes) } }
     @Published var target: AITarget         { didSet { persist("target", target.rawValue) } }
-    @Published var attendedAutomation: Bool { didSet { persist("attended", attendedAutomation) } }
+    @Published var unattendedAutomation: Bool { didSet { persist("unattended", unattendedAutomation) } }
     @Published var preventSleep: Bool       { didSet { persist("preventSleep", preventSleep) } }
 
-    // Self-tracked usage window (honest substitute for scraping quota internals)
+    // Self-tracked usage window
     @Published var windowStart: Date?       { didSet { persistDate("windowStart", windowStart) } }
     @Published var windowMinutes: Int       { didSet { persist("windowMinutes", windowMinutes) } }
 
@@ -73,12 +68,12 @@ final class TimerEngine: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
-        notes              = d.string(forKey: "notes") ?? ""
-        target             = AITarget(rawValue: d.string(forKey: "target") ?? "") ?? .claude
-        attendedAutomation = d.object(forKey: "attended") as? Bool ?? false
-        preventSleep       = d.object(forKey: "preventSleep") as? Bool ?? true
-        windowStart        = d.object(forKey: "windowStart") as? Date
-        windowMinutes      = d.object(forKey: "windowMinutes") as? Int ?? AppConfig.defaultWindowMinutes
+        notes                = d.string(forKey: "notes") ?? ""
+        target               = AITarget(rawValue: d.string(forKey: "target") ?? "") ?? .claude
+        unattendedAutomation = d.object(forKey: "unattended") as? Bool ?? false
+        preventSleep         = d.object(forKey: "preventSleep") as? Bool ?? true
+        windowStart          = d.object(forKey: "windowStart") as? Date
+        windowMinutes        = d.object(forKey: "windowMinutes") as? Int ?? AppConfig.defaultWindowMinutes
     }
 
     // MARK: Countdown control
@@ -128,7 +123,7 @@ final class TimerEngine: ObservableObject {
         Task { await executeOnFinish() }
     }
 
-    // MARK: Sleep assertion (prevent idle sleep mid-countdown)
+    // MARK: Sleep assertion
 
     private func beginSleepAssertion() {
         guard !assertionActive else { return }
@@ -148,25 +143,23 @@ final class TimerEngine: ObservableObject {
         assertionActive = false
     }
 
-    // MARK: On-finish execution (attended)
+    // MARK: Unattended Execution Pipeline
 
     private func executeOnFinish() async {
-        // 1. Bring the chosen AI app forward — a one-shot activation, never a relaunch loop.
-        await activateTarget()
-
         let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if attendedAutomation, !trimmed.isEmpty {
-            // 2. Attended auto-submit: requires Accessibility + an explicit confirmation.
+        if unattendedAutomation, !trimmed.isEmpty {
+            // 1. Silent check for TCC Accessibility permissions
             guard ensureAccessibilityPermission() else {
-                notify("Grant Accessibility permission to enable auto-paste.")
+                notify("Grant Accessibility permission in System Settings to enable auto-paste.")
                 return
             }
-            if confirmPaste(into: target.displayName) {
-                pasteAndSubmit(trimmed)
-            }
+            
+            // 2. Direct execution. No NSAlert. No asking for permission.
+            pasteAndSubmit(trimmed)
+            
         } else {
-            // 3. No automation → passive reminder. Never a lock, never a force-reopen.
+            // Passive fallback if automation is off or note is empty
             notify(trimmed.isEmpty
                    ? "Your countdown finished."
                    : "Your note is ready to paste into \(target.displayName).")
@@ -184,7 +177,7 @@ final class TimerEngine: ObservableObject {
                 return
             }
         }
-        // Fallback: locate by display name in /Applications.
+        
         let byName = URL(fileURLWithPath: "/Applications/\(target.displayName).app")
         if FileManager.default.fileExists(atPath: byName.path) {
             _ = try? await workspace.openApplication(at: byName, configuration: config)
@@ -193,21 +186,9 @@ final class TimerEngine: ObservableObject {
 
     // MARK: Accessibility + keystroke synthesis
 
-    /// Returns whether the process is trusted for Accessibility, prompting the user
-    /// to grant it the first time.
     private func ensureAccessibilityPermission() -> Bool {
         let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
         return AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
-    }
-
-    private func confirmPaste(into app: String) -> Bool {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "Paste your note into \(app)?"
-        alert.informativeText = "\(AppConfig.appName) will paste the saved note and press Return."
-        alert.addButton(withTitle: "Paste & Submit")
-        alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func pasteAndSubmit(_ text: String) {
@@ -216,12 +197,20 @@ final class TimerEngine: ObservableObject {
         pasteboard.setString(text, forType: .string)
 
         Task { @MainActor in
-            // Re-focus the target (the confirmation alert stole focus), then paste + submit.
+            // Bring target app to absolute front
             await activateTarget()
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            postKey(0x09, command: true)            // ⌘V  ('v' = key code 9)
-            try? await Task.sleep(nanoseconds: 200_000_000)   // exactly 200ms
-            postKey(0x24, command: false)           // Return (key code 36)
+            
+            // Allow app rendering and text-field focus
+            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+            
+            // ⌘V (Paste)
+            postKey(0x09, command: true)
+            
+            // Allow pasteboard transfer
+            try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+            
+            // Return Key (Submit)
+            postKey(0x24, command: false)
         }
     }
 
@@ -240,8 +229,6 @@ final class TimerEngine: ObservableObject {
     // MARK: Passive notification fallback
 
     private func notify(_ message: String) {
-        // `message` is a Sendable String; rebuild the (non-Sendable) notification objects
-        // back on the main actor to keep the concurrency checker happy.
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             Task { @MainActor in
@@ -261,7 +248,6 @@ final class TimerEngine: ObservableObject {
     func startUsageWindow() { windowStart = Date() }
     func clearUsageWindow() { windowStart = nil }
 
-    /// 0…1 fraction of the user-defined window consumed. Pure local timekeeping.
     var usageFraction: Double {
         guard let start = windowStart else { return 0 }
         let elapsed = Date().timeIntervalSince(start)
