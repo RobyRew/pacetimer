@@ -1,6 +1,24 @@
-# Tide — a Liquid-Glass menu-bar countdown
+<div align="center">
 
-A premium macOS 14+/15+ menu-bar app built with `MenuBarExtra`, `NSVisualEffectView`
+<img src="Docs/logo.svg" alt="Tide" width="160" height="160" />
+
+# Tide
+
+**A Liquid-Glass menu-bar countdown for macOS.**
+
+[![Platform](https://img.shields.io/badge/macOS-14%2B-0A84FF?logo=apple&logoColor=white)](https://www.apple.com/macos/)
+[![Built with](https://img.shields.io/badge/100%25-SwiftUI%20%2B%20AppKit-FA7343?logo=swift&logoColor=white)](https://developer.apple.com/xcode/swiftui/)
+[![Icon](https://img.shields.io/badge/icon-Liquid%20Glass%20.icon-8C73FF)](Assets.xcassets/AppIcon.icon)
+[![Release](https://img.shields.io/github/v/release/RobyRew/pacetimer?include_prereleases&color=63BCFF)](https://github.com/RobyRew/pacetimer/releases)
+[![License](https://img.shields.io/github/license/RobyRew/pacetimer?color=brightgreen)](LICENSE)
+
+</div>
+
+> **Fully native.** Tide is a 100% native **SwiftUI** app — no Electron, no web view, no
+> cross-platform wrapper. Pure SwiftUI + AppKit (`MenuBarExtra`, `NSVisualEffectView`,
+> `CoreGraphics`, `IOKit`), compiled to a single native `.app`. *Of course it is.* 🙂
+
+A premium macOS 14+ menu-bar app built with `MenuBarExtra`, `NSVisualEffectView`
 blur, and a code-rendered "mercury drop" identity. Its signature interaction is a
 **drag-to-stretch** timer: drag along a glowing track to set a countdown from 0 to
 5 hours, with crisp haptics at every 30-minute milestone.
