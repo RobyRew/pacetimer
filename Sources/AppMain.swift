@@ -11,10 +11,9 @@ import AppKit
 
 // MARK: - App configuration
 
-/// Everything brandable in one place. Change `appName` to rebrand the whole app
-/// (candidates: Tide · Cadence · Meniscus · Orbit · Interval).
+/// Everything brandable in one place. Change `appName` to rebrand the whole app.
 enum AppConfig {
-    static let appName = "Tide"
+    static let appName = "PeaceTimer"
 
     /// Hard ceiling for the drag-to-stretch timer (5 hours, expressed in minutes).
     static let maxMinutes = 300

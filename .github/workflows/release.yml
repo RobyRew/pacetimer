@@ -49,22 +49,22 @@ jobs:
       - name: Package .zip and .dmg
         run: |
           set -euo pipefail
-          APP="build/Build/Products/Release/Tide.app"
+          APP="build/Build/Products/Release/PeaceTimer.app"
           test -d "$APP" || { echo "::error::App not found at $APP"; ls -R build/Build/Products || true; exit 1; }
           VER="${GITHUB_REF_NAME}"
           # ditto preserves macOS metadata better than zip.
-          ditto -c -k --keepParent "$APP" "Tide-${VER}.zip"
+          ditto -c -k --keepParent "$APP" "PeaceTimer-${VER}.zip"
           # Compressed read-only disk image.
-          hdiutil create -volname "Tide" -srcfolder "$APP" -ov -format UDZO "Tide-${VER}.dmg"
-          ls -la Tide-*
+          hdiutil create -volname "PeaceTimer" -srcfolder "$APP" -ov -format UDZO "PeaceTimer-${VER}.dmg"
+          ls -la PeaceTimer-*
 
       - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "Tide ${{ github.ref_name }}"
+          name: "PeaceTimer ${{ github.ref_name }}"
           prerelease: true
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            Tide-*.zip
-            Tide-*.dmg
+            PeaceTimer-*.zip
+            PeaceTimer-*.dmg

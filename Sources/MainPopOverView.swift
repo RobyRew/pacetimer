@@ -1,8 +1,12 @@
 //
 //  MainPopOverView.swift
 //  The glassmorphic popover: the drag-to-stretch timer (with coordinate math and
-//  haptic milestones), live read-out, transport controls, the self-tracked usage
-//  gauge, and a settings sheet.
+//  haptic milestones), live read-out, a prompt field, transport controls, the
+//  self-tracked usage gauge, and an inline settings panel.
+//
+//  Settings are shown *inline* (not via `.sheet`) — a sheet presented from a
+//  MenuBarExtra window steals key focus from the popover, which makes it flicker
+//  open/closed. Swapping content within the same window fixes that.
 //
 
 import SwiftUI
@@ -18,28 +22,41 @@ struct MainPopOverView: View {
     private let trackHeight: CGFloat = 30
 
     var body: some View {
+        ZStack {
+            background
+            if showSettings {
+                SettingsPanel(engine: engine, displayModeRaw: $displayModeRaw, showSettings: $showSettings)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else {
+                mainContent
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+        }
+        .animation(.snappy(duration: 0.28), value: showSettings)
+    }
+
+    private var background: some View {
+        ZStack {
+            VisualEffectBlur(material: .underWindowBackground)
+            LinearGradient(
+                colors: [AppConfig.accent.opacity(0.08), .clear, AppConfig.accentDeep.opacity(0.10)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+        }
+        .ignoresSafeArea()
+    }
+
+    private var mainContent: some View {
         VStack(spacing: 16) {
             header
             stretchTrack
             readout
+            promptField
             controls
             usageGauge
             footer
         }
         .padding(18)
-        .background(
-            ZStack {
-                VisualEffectBlur(material: .underWindowBackground)
-                LinearGradient(
-                    colors: [AppConfig.accent.opacity(0.08), .clear, AppConfig.accentDeep.opacity(0.10)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                )
-            }
-            .ignoresSafeArea()
-        )
-        .sheet(isPresented: $showSettings) {
-            SettingsSheet(engine: engine, displayModeRaw: $displayModeRaw, isPresented: $showSettings)
-        }
     }
 
     // MARK: Header
@@ -77,7 +94,6 @@ struct MainPopOverView: View {
                 Capsule().fill(Color.white.opacity(0.08))
                 Capsule().strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
 
-                // Glowing, stretchable accent fill.
                 Capsule()
                     .fill(LinearGradient(colors: [AppConfig.accent, AppConfig.accentDeep],
                                          startPoint: .leading, endPoint: .trailing))
@@ -107,8 +123,6 @@ struct MainPopOverView: View {
         .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
     }
 
-    /// While idle the fill reflects the *configured* length; while running it drains
-    /// to reflect the *remaining* time.
     private func currentFraction(width: CGFloat) -> CGFloat {
         if engine.isRunning {
             let total = Double(engine.configuredMinutes * 60)
@@ -121,11 +135,9 @@ struct MainPopOverView: View {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
                 guard !engine.isRunning, width > 0 else { return }
-                // Coordinate → fraction → minutes (snapped to whole minutes, clamped to ceiling).
                 let frac = min(1, max(0, value.location.x / width))
                 engine.configuredMinutes = max(1, Int((frac * Double(AppConfig.maxMinutes)).rounded()))
 
-                // Crisp haptic at every 30-minute milestone crossing.
                 let milestone = engine.configuredMinutes / AppConfig.hapticIntervalMinutes
                 if milestone != lastHapticMilestone {
                     lastHapticMilestone = milestone
@@ -150,6 +162,44 @@ struct MainPopOverView: View {
                     .monospacedDigit()
                     .foregroundStyle(.white.opacity(0.6))
             }
+        }
+    }
+
+    // MARK: Prompt field (on the main screen)
+
+    private var promptField: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "text.cursor")
+                Text("Note to paste on finish")
+                    .font(.system(size: 11, weight: .semibold))
+                Spacer()
+                if !engine.notes.isEmpty {
+                    Button { engine.notes = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.4))
+                }
+            }
+            .foregroundStyle(.white.opacity(0.7))
+
+            ZStack(alignment: .topLeading) {
+                if engine.notes.isEmpty {
+                    Text("Type a prompt…")
+                        .foregroundStyle(.white.opacity(0.3))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 6)
+                }
+                TextEditor(text: $engine.notes)
+                    .scrollContentBackground(.hidden)
+                    .font(.system(size: 12))
+                    .frame(height: 52)
+                    .padding(3)
+            }
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.12)))
         }
     }
 
@@ -257,19 +307,25 @@ struct MainPopOverView: View {
     }
 }
 
-// MARK: - Settings sheet
+// MARK: - Inline settings panel
 
-struct SettingsSheet: View {
+struct SettingsPanel: View {
     @ObservedObject var engine: TimerEngine
     @Binding var displayModeRaw: String
-    @Binding var isPresented: Bool
+    @Binding var showSettings: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Settings")
-                .font(.system(size: 16, weight: .bold))
+        VStack(alignment: .leading, spacing: 14) {
+            Button {
+                withAnimation(.snappy(duration: 0.28)) { showSettings = false }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                    Text("Settings").font(.system(size: 15, weight: .bold))
+                }
+            }
+            .buttonStyle(.plain)
 
-            // Appearance: menu-bar-only vs. dock.
             field("Appearance") {
                 Picker("", selection: Binding(
                     get: { DisplayMode(rawValue: displayModeRaw) ?? .menuBarOnly },
@@ -284,7 +340,11 @@ struct SettingsSheet: View {
                 .labelsHidden()
             }
 
-            // AI target brought forward when the timer ends.
+            Toggle("Launch at login", isOn: Binding(
+                get: { LaunchAtLogin.isEnabled },
+                set: { LaunchAtLogin.isEnabled = $0 }
+            ))
+
             field("AI target on finish") {
                 Picker("", selection: $engine.target) {
                     ForEach(AITarget.allCases) { Text($0.displayName).tag($0) }
@@ -294,42 +354,16 @@ struct SettingsSheet: View {
             }
 
             Toggle("Prevent sleep during countdown", isOn: $engine.preventSleep)
-            Toggle("Attended auto-submit (asks before pasting)", isOn: $engine.attendedAutomation)
+            Toggle("Auto-paste note on finish (asks first)", isOn: $engine.attendedAutomation)
 
-            // Saved note with a custom placeholder overlay.
-            field("Saved note") {
-                ZStack(alignment: .topLeading) {
-                    if engine.notes.isEmpty {
-                        Text("Type a prompt or instruction to paste when the timer ends…")
-                            .foregroundStyle(.white.opacity(0.3))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 8)
-                    }
-                    TextEditor(text: $engine.notes)
-                        .scrollContentBackground(.hidden)
-                        .frame(height: 90)
-                        .padding(4)
-                }
-                .background(Color.white.opacity(0.06))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.15)))
-            }
-
-            HStack {
-                Spacer()
-                Button("Done") { isPresented = false }
-                    .buttonStyle(.borderedProminent)
-            }
+            Spacer(minLength: 0)
         }
-        .padding(20)
-        .frame(width: 340)
+        .padding(18)
         .toggleStyle(.switch)
         .tint(AppConfig.accent)
         .foregroundStyle(.white)
-        .background(VisualEffectBlur(material: .underWindowBackground).ignoresSafeArea())
     }
 
-    /// A labelled settings row.
     @ViewBuilder
     private func field<Content: View>(_ title: String,
                                       @ViewBuilder content: () -> Content) -> some View {

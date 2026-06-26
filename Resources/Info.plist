@@ -3,11 +3,11 @@
 <plist version="1.0">
 <dict>
     <key>CFBundleName</key>
-    <string>Tide</string>
+    <string>PeaceTimer</string>
     <key>CFBundleDisplayName</key>
-    <string>Tide</string>
+    <string>PeaceTimer</string>
     <key>CFBundleIdentifier</key>
-    <string>com.robyrew.tide</string>
+    <string>com.robyrew.peacetimer</string>
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleVersion</key>
@@ -15,7 +15,7 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
-    <string>Tide</string>
+    <string>PeaceTimer</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
 
@@ -26,7 +26,7 @@
 
     <!-- Required because the app activates other applications (NSWorkspace). -->
     <key>NSAppleEventsUsageDescription</key>
-    <string>Tide brings your selected AI app to the front and, only with your confirmation, pastes your saved note.</string>
+    <string>PeaceTimer brings your selected AI app to the front and, only with your confirmation, pastes your saved note.</string>
 
     <key>NSHumanReadableCopyright</key>
     <string>© 2026</string>

@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="Docs/logo.svg" alt="Tide" width="160" height="160" />
+<img src="Docs/logo.svg" alt="PeaceTimer" width="160" height="160" />
 
-# Tide
+# PeaceTimer
 
 **A Liquid-Glass menu-bar countdown for macOS.**
 
@@ -14,7 +14,7 @@
 
 </div>
 
-> **Fully native.** Tide is a 100% native **SwiftUI** app — no Electron, no web view, no
+> **Fully native.** PeaceTimer is a 100% native **SwiftUI** app — no Electron, no web view, no
 > cross-platform wrapper. Pure SwiftUI + AppKit (`MenuBarExtra`, `NSVisualEffectView`,
 > `CoreGraphics`, `IOKit`), compiled to a single native `.app`. *Of course it is.* 🙂
 
@@ -35,6 +35,8 @@ blur, and a code-rendered "mercury drop" identity. Its signature interaction is 
   template glyph that grows its core while a countdown is active.
 - **Menu-bar-only or Dual mode** — toggle in Settings flips
   `NSApp.setActivationPolicy` between `.accessory` and `.regular`.
+- **Launch at login** — `SMAppService.mainApp` (ServiceManagement) registers the app
+  as a login item; toggle in Settings.
 - **Sleep prevention** — an `IOPMAssertion` (`kIOPMAssertionTypeNoIdleSleep`) holds
   the Mac awake while a countdown runs, released on pause/finish.
 - **Saved note + attended automation** — when the timer hits zero, the chosen AI app
