@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Tide</string>
+    <key>CFBundleDisplayName</key>
+    <string>Tide</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.robyrew.tide</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>Tide</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.0</string>
+
+    <!-- Launch as a menu-bar agent (no Dock icon). The in-app toggle can promote
+         the app to .regular at runtime to show a Dock icon. -->
+    <key>LSUIElement</key>
+    <true/>
+
+    <!-- Required because the app activates other applications (NSWorkspace). -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Tide brings your selected AI app to the front and, only with your confirmation, pastes your saved note.</string>
+
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026</string>
+</dict>
+</plist>

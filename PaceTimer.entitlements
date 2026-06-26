@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Synthesizing keystrokes (CGEvent) and driving other apps is incompatible
+         with the App Sandbox, so it is disabled here. The app still relies on the
+         user explicitly granting Accessibility permission at first use. -->
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+
+    <!-- Allow sending Apple Events to the target AI apps. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

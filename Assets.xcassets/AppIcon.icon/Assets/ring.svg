@@ -1,0 +1,15 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Glass lens ring sweep. -->
+    <linearGradient id="ring" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0"   stop-color="#9ED7FF"/>
+      <stop offset="0.5" stop-color="#63BCFF"/>
+      <stop offset="1"   stop-color="#8C73FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Lens ring -->
+  <circle cx="512" cy="512" r="338" fill="none" stroke="url(#ring)" stroke-width="48"/>
+  <!-- Bright glassy rim highlight -->
+  <circle cx="512" cy="512" r="363" fill="none" stroke="#FFFFFF" stroke-opacity="0.28" stroke-width="4"/>
+</svg>

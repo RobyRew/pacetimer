@@ -1,0 +1,70 @@
+name: Release
+
+# Builds the app on a macOS runner and attaches a .zip and .dmg to the GitHub
+# Release whenever a version tag (v*) is pushed. Also runnable manually.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write   # required to create/update the Release and upload assets
+
+jobs:
+  build:
+    name: Build & release (macOS)
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # The Liquid Glass `.icon` needs the Xcode 26 toolchain (actool) to compile.
+      # `latest-stable` selects the newest stable Xcode on the runner image.
+      - name: Select latest Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      # Unsigned build: CI has no Developer ID. The alpha .app is ad-hoc/unsigned,
+      # so users open it via right-click → Open (Gatekeeper will warn — expected).
+      - name: Build (Release, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project PaceTimer.xcodeproj \
+            -scheme PaceTimer \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package .zip and .dmg
+        run: |
+          set -euo pipefail
+          APP="build/Build/Products/Release/Tide.app"
+          test -d "$APP" || { echo "::error::App not found at $APP"; ls -R build/Build/Products || true; exit 1; }
+          VER="${GITHUB_REF_NAME}"
+          # ditto preserves macOS metadata better than zip.
+          ditto -c -k --keepParent "$APP" "Tide-${VER}.zip"
+          # Compressed read-only disk image.
+          hdiutil create -volname "Tide" -srcfolder "$APP" -ov -format UDZO "Tide-${VER}.dmg"
+          ls -la Tide-*
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Tide ${{ github.ref_name }}"
+          prerelease: true
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            Tide-*.zip
+            Tide-*.dmg

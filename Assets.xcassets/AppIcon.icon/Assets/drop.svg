@@ -1,0 +1,21 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Mercury bead: lit-from-within sphere. -->
+    <radialGradient id="core" cx="0.40" cy="0.34" r="0.78">
+      <stop offset="0"    stop-color="#FFFFFF"/>
+      <stop offset="0.42" stop-color="#A8D8FF"/>
+      <stop offset="0.78" stop-color="#63BCFF"/>
+      <stop offset="1"    stop-color="#5B7BFF"/>
+    </radialGradient>
+    <!-- Soft specular highlight. -->
+    <radialGradient id="spec" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- The drop -->
+  <circle cx="512" cy="512" r="234" fill="url(#core)"/>
+  <!-- Wet specular reflection -->
+  <ellipse cx="430" cy="424" rx="94" ry="58" fill="url(#spec)"/>
+</svg>
