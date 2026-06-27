@@ -7,8 +7,8 @@
       "layers" : [
         {
           "fill" : "none",
-          "image-name" : "drop.svg",
-          "name" : "drop"
+          "image-name" : "glyph.svg",
+          "name" : "glyph"
         }
       ],
       "shadow" : {
@@ -28,8 +28,8 @@
           "fill" : "none",
           "glass" : true,
           "hidden" : false,
-          "image-name" : "ring.svg",
-          "name" : "ring",
+          "image-name" : "dial.svg",
+          "name" : "dial",
           "opacity-specializations" : [
             {
               "value" : 1

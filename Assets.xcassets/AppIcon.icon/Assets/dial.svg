@@ -1,0 +1,14 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="dial" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0"   stop-color="#9ED7FF"/>
+      <stop offset="0.5" stop-color="#63BCFF"/>
+      <stop offset="1"   stop-color="#8C73FF"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Timer dial ring (the glass layer) -->
+  <circle cx="512" cy="512" r="338" fill="none" stroke="url(#dial)" stroke-width="46" stroke-opacity="0.6"/>
+  <!-- Glassy outer rim highlight -->
+  <circle cx="512" cy="512" r="364" fill="none" stroke="#FFFFFF" stroke-opacity="0.25" stroke-width="4"/>
+</svg>

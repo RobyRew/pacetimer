@@ -1,0 +1,11 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- Countdown progress arc (~70%), bright; starts at 12 o'clock, sweeps clockwise -->
+  <circle cx="512" cy="512" r="338" fill="none" stroke="#FFFFFF" stroke-width="46"
+          stroke-linecap="round" stroke-opacity="0.95"
+          stroke-dasharray="1487 637" transform="rotate(-90 512 512)"/>
+
+  <!-- Terminal prompt  >_  (the command motif) -->
+  <polyline points="400,452 510,512 400,572" fill="none" stroke="#FFFFFF"
+            stroke-width="46" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="528" y="548" width="96" height="38" rx="19" fill="#FFFFFF"/>
+</svg>
