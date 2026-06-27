@@ -8,6 +8,7 @@
 
 import SwiftUI
 import AppKit
+import ApplicationServices
 
 // MARK: - App configuration
 
@@ -51,7 +52,6 @@ enum DisplayMode: String, CaseIterable, Identifiable {
 }
 
 // MARK: - App entry point
-
 @main
 struct PaceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
@@ -63,22 +63,27 @@ struct PaceApp: App {
             MainPopOverView(engine: engine, displayModeRaw: $displayModeRaw)
                 .frame(width: 340)
         } label: {
-            // Custom liquid-glass template image; swaps to the glowing core while running.
             Image(nsImage: AppIconView.menuBarImage(active: engine.isRunning))
         }
-        .menuBarExtraStyle(.window)   // a real window — needed for blur + drag gestures
+        .menuBarExtraStyle(.window)
     }
 }
 
 // MARK: - App delegate
-
-/// Applies the persisted activation policy at launch. Runtime changes are applied
-/// directly from the settings picker so the Dock icon appears/disappears instantly.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // 1. Set the initial activation policy (Dock vs Menu Bar only)
         let raw = UserDefaults.standard.string(forKey: "displayMode")
             ?? DisplayMode.menuBarOnly.rawValue
         let mode = DisplayMode(rawValue: raw) ?? .menuBarOnly
         NSApp.setActivationPolicy(mode.activationPolicy)
+        
+        // 2. Trigger the Accessibility (Privacy) prompt on first launch
+        let promptOption = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        let options = [promptOption: true] as CFDictionary
+        
+        // This will silently return true if they already gave permission,
+        // or forcefully pop the System Settings alert right now if they haven't.
+        _ = AXIsProcessTrustedWithOptions(options)
     }
 }
