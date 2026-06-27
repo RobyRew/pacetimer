@@ -2,8 +2,12 @@ name: Release
 
 # Builds the app on a macOS runner and attaches a .zip and .dmg to the GitHub
 # Release whenever a version tag (v*) is pushed. Also runnable manually.
+name: Build and Release
+
 on:
   push:
+    branches:
+      - main # Or 'master', depending on what your default branch is named
     tags:
       - "v*"
   release:
