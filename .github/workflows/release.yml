@@ -1,8 +1,7 @@
-name: Release
+name: Build and Release
 
 # Builds the app on a macOS runner and attaches a .zip and .dmg to the GitHub
 # Release whenever a version tag (v*) is pushed. Also runnable manually.
-name: Build and Release
 
 on:
   push:
