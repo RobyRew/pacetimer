@@ -78,12 +78,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mode = DisplayMode(rawValue: raw) ?? .menuBarOnly
         NSApp.setActivationPolicy(mode.activationPolicy)
         
-        // 2. Trigger the Accessibility (Privacy) prompt on first launch
-        let promptOption = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-        let options = [promptOption: true] as CFDictionary
-        
-        // This will silently return true if they already gave permission,
-        // or forcefully pop the System Settings alert right now if they haven't.
-        _ = AXIsProcessTrustedWithOptions(options)
+        // 2. Only prompt for Accessibility permission on first launch.
+        // Check silently first (no prompt).
+        if !AXIsProcessTrustedWithOptions(nil) {
+            // Only show prompt if not already granted.
+            let promptOption = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+            let options = [promptOption: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
+        }
     }
 }
