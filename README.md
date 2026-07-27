@@ -103,6 +103,43 @@ runtime, sandbox off).
 > synthesis and cross-app control require it. Sign with your own team for
 > distribution.
 
+## Troubleshooting
+
+### "It keeps asking for Accessibility even though I already granted it"
+
+macOS (TCC) identifies an app by its **code signature**, not its name or path. An
+**unsigned or ad-hoc-signed** build gets a *new identity on every rebuild*, so the
+grant you gave the previous build no longer matches the binary you just launched —
+macOS sees a brand-new app and asks again. The old entry stays behind in System
+Settings, still switched on, pointing at a binary that no longer exists. That's why
+toggling it there doesn't help.
+
+**Permanent fix — sign with a stable identity:**
+
+- **Local dev:** in Xcode, *Signing & Capabilities* → check *Automatically manage
+  signing* and pick your team (a free Apple ID gives you an "Apple Development"
+  identity). That identity is stable across rebuilds, so the grant sticks.
+- **Distributed builds:** sign with a **Developer ID Application** certificate and
+  notarize. Releases built by CI are currently **unsigned** (`CODE_SIGNING_ALLOWED=NO`),
+  so each downloaded build re-asks — expected until signing secrets are wired in.
+
+**While iterating,** clear the stale entry between builds:
+
+```sh
+./Scripts/reset-accessibility.sh
+# equivalently: tccutil reset Accessibility com.robyrew.peacetimer
+```
+
+Also make sure you launch the *same* copy you granted — a build in `DerivedData`, a
+copy in `/Applications`, and one running from a mounted `.dmg` are three different
+apps as far as TCC is concerned.
+
+### App behaviour
+
+The app no longer prompts for Accessibility at launch. Settings shows a live
+**Accessibility** status row with a *Grant…* button and a shortcut into System
+Settings; it flips to "Granted" the instant you approve, without relaunching.
+
 ## Rebrand / configure
 
 Everything brandable lives in `AppConfig` (`Sources/AppMain.swift`): `appName`,

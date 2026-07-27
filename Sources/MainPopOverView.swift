@@ -313,6 +313,7 @@ struct SettingsPanel: View {
     @ObservedObject var engine: TimerEngine
     @Binding var displayModeRaw: String
     @Binding var showSettings: Bool
+    @ObservedObject private var accessibility = AccessibilityPermission.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -325,6 +326,8 @@ struct SettingsPanel: View {
                 }
             }
             .buttonStyle(.plain)
+
+            accessibilityRow
 
             field("Appearance") {
                 Picker("", selection: Binding(
@@ -363,6 +366,42 @@ struct SettingsPanel: View {
         .toggleStyle(.switch)
         .tint(AppConfig.accent)
         .foregroundStyle(.white)
+    }
+
+    /// Live Accessibility status. Updates itself the moment the user grants the
+    /// permission in System Settings — no relaunch, no repeated launch-time nagging.
+    private var accessibilityRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: accessibility.isTrusted
+                  ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+                .foregroundStyle(accessibility.isTrusted ? .green : .orange)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Accessibility")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(accessibility.isTrusted ? "Granted" : "Required to send keystrokes")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+
+            Spacer()
+
+            if !accessibility.isTrusted {
+                Button("Grant…") { accessibility.request() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(AppConfig.accent)
+                Button {
+                    accessibility.openSystemSettings()
+                } label: {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.6))
+            }
+        }
+        .padding(10)
+        .glassCard(cornerRadius: 12)
     }
 
     @ViewBuilder

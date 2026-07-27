@@ -78,13 +78,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let mode = DisplayMode(rawValue: raw) ?? .menuBarOnly
         NSApp.setActivationPolicy(mode.activationPolicy)
         
-        // 2. Only prompt for Accessibility permission on first launch.
-        // Check silently first (no prompt).
-        if !AXIsProcessTrustedWithOptions(nil) {
-            // Only show prompt if not already granted.
-            let promptOption = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
-            let options = [promptOption: true] as CFDictionary
-            _ = AXIsProcessTrustedWithOptions(options)
-        }
+        // 2. Accessibility: prompt at most once ever (first-run discovery), then stay
+        //    silent. Re-prompting on every launch is what makes unsigned rebuilds nag
+        //    forever — instead, Settings shows a live status row with a "Grant…" button.
+        AccessibilityPermission.shared.requestOnceOnFirstLaunch()
     }
 }
