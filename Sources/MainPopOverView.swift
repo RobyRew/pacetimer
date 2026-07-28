@@ -53,7 +53,6 @@ struct MainPopOverView: View {
             readout
             promptField
             controls
-            usageGauge
             footer
         }
         .padding(18)
@@ -242,48 +241,6 @@ struct MainPopOverView: View {
                 .foregroundStyle(.white)
         }
         .buttonStyle(.plain)
-    }
-
-    // MARK: Self-tracked usage gauge
-
-    private var usageGauge: some View {
-        TimelineView(.periodic(from: .now, by: 30)) { _ in
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle().stroke(Color.white.opacity(0.12), lineWidth: 5)
-                    Circle().trim(from: 0, to: engine.usageFraction)
-                        .stroke(
-                            LinearGradient(colors: [AppConfig.accent, AppConfig.accentDeep],
-                                           startPoint: .top, endPoint: .bottom),
-                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
-                        )
-                        .rotationEffect(.degrees(-90))
-                    Text("\(Int(engine.usageFraction * 100))%")
-                        .font(.system(size: 11, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 42, height: 42)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Usage window")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.white)
-                    Text(engine.usageRemainingText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                Spacer()
-                Button(engine.windowStart == nil ? "Start" : "Reset") {
-                    if engine.windowStart == nil { engine.startUsageWindow() }
-                    else { engine.clearUsageWindow() }
-                }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(AppConfig.accent)
-            }
-            .padding(10)
-            .glassCard(cornerRadius: 14)
-        }
     }
 
     // MARK: Footer

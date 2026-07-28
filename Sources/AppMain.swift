@@ -21,7 +21,6 @@ enum AppConfig {
     /// Crisp haptic feedback fires whenever the drag crosses one of these milestones.
     static let hapticIntervalMinutes = 30
     /// Default length of the self-tracked usage window (mirrors a 5-hour cadence).
-    static let defaultWindowMinutes = 300
 
     /// Accent gradient used throughout the glass UI.
     static let accent     = Color(red: 0.39, green: 0.74, blue: 1.00)

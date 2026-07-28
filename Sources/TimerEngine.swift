@@ -57,10 +57,6 @@ final class TimerEngine: ObservableObject {
     @Published var unattendedAutomation: Bool { didSet { persist("unattended", unattendedAutomation) } }
     @Published var preventSleep: Bool       { didSet { persist("preventSleep", preventSleep) } }
 
-    // Self-tracked usage window
-    @Published var windowStart: Date?       { didSet { persistDate("windowStart", windowStart) } }
-    @Published var windowMinutes: Int       { didSet { persist("windowMinutes", windowMinutes) } }
-
     private var ticker: Timer?
     private var endDate: Date?
     private var assertionID = IOPMAssertionID(0)
@@ -72,8 +68,6 @@ final class TimerEngine: ObservableObject {
         target               = AITarget(rawValue: d.string(forKey: "target") ?? "") ?? .claude
         unattendedAutomation = d.object(forKey: "unattended") as? Bool ?? false
         preventSleep         = d.object(forKey: "preventSleep") as? Bool ?? true
-        windowStart          = d.object(forKey: "windowStart") as? Date
-        windowMinutes        = d.object(forKey: "windowMinutes") as? Int ?? AppConfig.defaultWindowMinutes
     }
 
     // MARK: Countdown control
@@ -186,11 +180,14 @@ final class TimerEngine: ObservableObject {
 
     // MARK: Accessibility + keystroke synthesis
 
+    /// TRULY silent check — no system prompt, ever.
+    ///
+    /// This used to call `AXIsProcessTrustedWithOptions([prompt: true])`, which pops
+    /// the "grant Accessibility" dialog *every time the timer fired* — the cause of
+    /// the "it asks me every session even though it's enabled in Settings" bug.
+    /// Granting is handled once, on demand, from Settings ▸ Permissions.
     private func ensureAccessibilityPermission() -> Bool {
-        // Documented constant value of `kAXTrustedCheckOptionPrompt` (a non-Sendable
-        // imported global that Swift 6 won't let us reference directly).
-        let key = "AXTrustedCheckOptionPrompt"
-        return AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
+        AXIsProcessTrusted()
     }
 
     private func pasteAndSubmit(_ text: String) {
@@ -245,31 +242,9 @@ final class TimerEngine: ObservableObject {
         }
     }
 
-    // MARK: Self-tracked usage window
-
-    func startUsageWindow() { windowStart = Date() }
-    func clearUsageWindow() { windowStart = nil }
-
-    var usageFraction: Double {
-        guard let start = windowStart else { return 0 }
-        let elapsed = Date().timeIntervalSince(start)
-        return min(1, max(0, elapsed / Double(windowMinutes * 60)))
-    }
-
-    var usageRemainingText: String {
-        guard let start = windowStart else { return "No window started" }
-        let left = max(0, Double(windowMinutes * 60) - Date().timeIntervalSince(start))
-        return String(format: "%dh %02dm left", Int(left) / 3600, (Int(left) % 3600) / 60)
-    }
-
     // MARK: Persistence helpers
 
     private func persist(_ key: String, _ value: Any) {
         UserDefaults.standard.set(value, forKey: key)
-    }
-
-    private func persistDate(_ key: String, _ value: Date?) {
-        if let value { UserDefaults.standard.set(value, forKey: key) }
-        else { UserDefaults.standard.removeObject(forKey: key) }
     }
 }

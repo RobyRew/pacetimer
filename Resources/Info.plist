@@ -19,6 +19,14 @@
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
 
+    <!-- REQUIRED for an asset-catalog icon to actually show. Without CFBundleIconName
+         macOS ignores the compiled AppIcon in Assets.car and draws the generic blank
+         app icon — which is exactly what "the icon isn't showing" was. -->
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+
     <!-- Launch as a menu-bar agent (no Dock icon). The in-app toggle can promote
          the app to .regular at runtime to show a Dock icon. -->
     <key>LSUIElement</key>
@@ -37,7 +45,7 @@
     <key>SUFeedURL</key>
     <string>https://robyrew.github.io/pacetimer/appcast.xml</string>
     <key>SUPublicEDKey</key>
-    <string>REPLACE_WITH_YOUR_SPARKLE_ED_PUBLIC_KEY</string>
+    <string>4X2KEouvDSSL8Yyj8xr8OmxVFnGGSk1L2olrXkkm8CM=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
     <key>SUScheduledCheckInterval</key>
