@@ -158,7 +158,9 @@ jobs:
     name: Pre-release (Alpha)
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    # MUST be macOS: Sparkle's `sign_update` (used to EdDSA-sign the update zip) is a
+    # Mach-O binary — on a Linux runner it dies with "Exec format error".
+    runs-on: macos-26
     permissions:
       contents: write
       pages: write
