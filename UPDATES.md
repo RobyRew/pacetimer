@@ -14,30 +14,37 @@ once; after that, every push to `main` publishes a signed update automatically.
 - Sparkle verifies each update's EdDSA signature against `SUPublicEDKey` before
   installing, so a compromised download can't be pushed to users.
 
-## One-time steps
+## Per-app signing keys
 
-1. **Generate a key pair** (needs Sparkle's tools once, locally):
+Sparkle's default is **one key per developer** (`generate_keys` with no arguments
+reuses whatever is already in the Keychain, and never overwrites it). This project
+instead uses a **dedicated key per app** via `--account`, so a leaked key only ever
+affects one app:
+
+| App | Keychain account | Public key (in its `Info.plist`) |
+|---|---|---|
+| PeaceTimer | `PeaceTimer` | `md3JMF+GB9+7tY+7+pxvuo1f1APzC9vPiHy99wyvOWQ=` |
+| TopPresenter | *(default)* | `4X2KEouvDSSL8Yyj8xr8OmxVFnGGSk1L2olrXkkm8CM=` |
+
+Create a key for a new app with:
+```sh
+./bin/generate_keys --account <AppName>
+```
+
+## One-time steps (PeaceTimer)
+
+1. **Key pair** — ✅ already done (Keychain account `PeaceTimer`).
+2. **Public key in `Info.plist`** — ✅ already set (`SUPublicEDKey` above).
+3. **Export the private key → repo secret** (the one manual step; Keychain will ask
+   for your approval, which is why it can't be automated):
    ```sh
-   # download Sparkle release, then:
-   ./bin/generate_keys
+   ./bin/generate_keys --account PeaceTimer -x k.txt
+   gh secret set SPARKLE_PRIVATE_KEY -R RobyRew/pacetimer < k.txt
+   rm k.txt
    ```
-   It prints a **public** key and stores the **private** key in your login Keychain.
-
-2. **Add the public key to `Info.plist`** — replace the placeholder:
-   ```xml
-   <key>SUPublicEDKey</key>
-   <string>REPLACE_WITH_YOUR_SPARKLE_ED_PUBLIC_KEY</string>
-   ```
-   (`UpdateController` keeps Sparkle asleep while this is the placeholder, so the
-   app is safe to ship before you're ready.)
-
-3. **Export the private key and add it as a repo secret**:
-   ```sh
-   ./bin/generate_keys -x sparkle_private_key.txt
-   ```
-   In GitHub → Settings → Secrets and variables → Actions, add
-   **`SPARKLE_PRIVATE_KEY`** with that value, then delete the local file.
-
+   ⚠️ Use `--account PeaceTimer` — without it you'd export the *default* key, which
+   does **not** match the public key baked into this app, and every update would
+   fail signature verification.
 4. **Enable GitHub Pages** for the repo: Settings → Pages → Source = **GitHub Actions**.
 
 That's it. The appcast steps in CI are gated on `SPARKLE_PRIVATE_KEY` — until the

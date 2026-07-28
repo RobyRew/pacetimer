@@ -44,8 +44,10 @@
          dormant. The appcast is published to GitHub Pages by CI. -->
     <key>SUFeedURL</key>
     <string>https://robyrew.github.io/pacetimer/appcast.xml</string>
+    <!-- PeaceTimer's OWN signing key (Keychain account "PeaceTimer"), separate from
+         other apps' keys so a leak is contained to this app. -->
     <key>SUPublicEDKey</key>
-    <string>4X2KEouvDSSL8Yyj8xr8OmxVFnGGSk1L2olrXkkm8CM=</string>
+    <string>md3JMF+GB9+7tY+7+pxvuo1f1APzC9vPiHy99wyvOWQ=</string>
     <key>SUEnableAutomaticChecks</key>
     <true/>
     <key>SUScheduledCheckInterval</key>
