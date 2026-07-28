@@ -37,6 +37,12 @@ blur, and a code-rendered "mercury drop" identity. Its signature interaction is 
   `NSApp.setActivationPolicy` between `.accessory` and `.regular`.
 - **Launch at login** — `SMAppService.mainApp` (ServiceManagement) registers the app
   as a login item; toggle in Settings.
+- **Auto-update** — [Sparkle](https://sparkle-project.org) with an EdDSA-signed
+  appcast on GitHub Pages; Settings ▸ Updates has "Check Now" + an auto-check toggle.
+  Dormant until you add a signing key — see [UPDATES.md](UPDATES.md).
+- **Built with the latest** — Swift 6 (approachable concurrency, MainActor-by-default),
+  Xcode 26, macOS 14+. CI ships an unsigned alpha on every push to `main`, with a
+  **styled drag-to-Applications DMG**.
 - **Sleep prevention** — an `IOPMAssertion` (`kIOPMAssertionTypeNoIdleSleep`) holds
   the Mac awake while a countdown runs, released on pause/finish.
 - **Saved note + attended automation** — when the timer hits zero, the chosen AI app

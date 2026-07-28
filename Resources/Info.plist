@@ -30,5 +30,19 @@
 
     <key>NSHumanReadableCopyright</key>
     <string>© 2026</string>
+
+    <!-- Sparkle auto-update (see UPDATES.md). Replace SUPublicEDKey with the EdDSA
+         public key from Sparkle's `generate_keys`; until then the updater stays
+         dormant. The appcast is published to GitHub Pages by CI. -->
+    <key>SUFeedURL</key>
+    <string>https://robyrew.github.io/pacetimer/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>REPLACE_WITH_YOUR_SPARKLE_ED_PUBLIC_KEY</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>86400</integer>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
 </dict>
 </plist>

@@ -314,22 +314,53 @@ struct SettingsPanel: View {
     @Binding var displayModeRaw: String
     @Binding var showSettings: Bool
     @ObservedObject private var accessibility = AccessibilityPermission.shared
+    @EnvironmentObject private var updater: UpdateController
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
             Button {
                 withAnimation(.snappy(duration: 0.28)) { showSettings = false }
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
                     Text("Settings").font(.system(size: 15, weight: .bold))
+                    Spacer()
                 }
             }
             .buttonStyle(.plain)
+            .padding(.bottom, 12)
 
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    permissionsSection
+                    appearanceSection
+                    automationSection
+                    updatesSection
+                }
+                .padding(.bottom, 8)
+            }
+            .frame(maxHeight: 460)
+        }
+        .padding(18)
+        .toggleStyle(.switch)
+        .tint(AppConfig.accent)
+        .foregroundStyle(.white)
+    }
+
+    // MARK: Sections
+
+    private var permissionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader("Permissions", "PeaceTimer needs this to type into your AI app for you.")
             accessibilityRow
+        }
+    }
 
-            field("Appearance") {
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("Appearance & startup", nil)
+            field("Where PeaceTimer lives") {
                 Picker("", selection: Binding(
                     get: { DisplayMode(rawValue: displayModeRaw) ?? .menuBarOnly },
                     set: { newValue in
@@ -342,34 +373,66 @@ struct SettingsPanel: View {
                 .pickerStyle(.segmented)
                 .labelsHidden()
             }
+            toggleRow("Launch at login",
+                      "Open PeaceTimer automatically when you log in.",
+                      isOn: Binding(get: { LaunchAtLogin.isEnabled },
+                                    set: { LaunchAtLogin.isEnabled = $0 }))
+            toggleRow("Keep Mac awake while counting",
+                      "Prevents idle sleep so the timer isn't interrupted.",
+                      isOn: $engine.preventSleep)
+        }
+    }
 
-            Toggle("Launch at login", isOn: Binding(
-                get: { LaunchAtLogin.isEnabled },
-                set: { LaunchAtLogin.isEnabled = $0 }
-            ))
-
-            field("AI target on finish") {
+    private var automationSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("When the timer ends", nil)
+            field("Bring this app to the front") {
                 Picker("", selection: $engine.target) {
                     ForEach(AITarget.allCases) { Text($0.displayName).tag($0) }
                 }
                 .pickerStyle(.menu)
                 .labelsHidden()
             }
-
-            Toggle("Prevent sleep during countdown", isOn: $engine.preventSleep)
-            // Replace the old Toggle("Auto-paste note on finish (asks first)") with:
-            Toggle("Unattended auto-paste on finish", isOn: $engine.unattendedAutomation)
-
-            Spacer(minLength: 0)
+            toggleRow("Auto-paste my note & press Return",
+                      "When on, PeaceTimer pastes your saved note into the target app and hits Return automatically — no confirmation.",
+                      isOn: $engine.unattendedAutomation)
         }
-        .padding(18)
-        .toggleStyle(.switch)
-        .tint(AppConfig.accent)
-        .foregroundStyle(.white)
     }
 
-    /// Live Accessibility status. Updates itself the moment the user grants the
-    /// permission in System Settings — no relaunch, no repeated launch-time nagging.
+    private var updatesSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionHeader("Updates", nil)
+            HStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("PeaceTimer \(appVersion)")
+                        .font(.system(size: 12, weight: .medium))
+                    Text(updatesStatusText)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                Spacer()
+                Button("Check Now") { updater.checkForUpdates() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(updater.canCheckForUpdates ? AppConfig.accent : .white.opacity(0.3))
+                    .disabled(!updater.canCheckForUpdates)
+            }
+            .padding(10)
+            .glassCard(cornerRadius: 12)
+
+            if UpdateController.updatesConfigured {
+                toggleRow("Check for updates automatically",
+                          "Look for new versions in the background and offer to install them.",
+                          isOn: Binding(get: { updater.automaticallyChecksForUpdates },
+                                        set: { updater.automaticallyChecksForUpdates = $0 }))
+            }
+        }
+    }
+
+    // MARK: Rows & helpers
+
+    /// Live Accessibility status. Updates the moment the user grants the permission
+    /// in System Settings — no relaunch, no repeated launch-time nagging.
     private var accessibilityRow: some View {
         HStack(spacing: 10) {
             Image(systemName: accessibility.isTrusted
@@ -379,7 +442,8 @@ struct SettingsPanel: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Accessibility")
                     .font(.system(size: 12, weight: .semibold))
-                Text(accessibility.isTrusted ? "Granted" : "Required to send keystrokes")
+                Text(accessibility.isTrusted ? "Granted — PeaceTimer can type for you"
+                                              : "Needed before PeaceTimer can paste & press Return")
                     .font(.system(size: 10))
                     .foregroundStyle(.white.opacity(0.55))
             }
@@ -404,6 +468,32 @@ struct SettingsPanel: View {
         .glassCard(cornerRadius: 12)
     }
 
+    private func toggleRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.system(size: 13, weight: .medium))
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func sectionHeader(_ title: String, _ subtitle: String?) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title.uppercased())
+                .font(.system(size: 10, weight: .bold))
+                .kerning(0.6)
+                .foregroundStyle(.white.opacity(0.4))
+            if let subtitle {
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+        }
+    }
+
     @ViewBuilder
     private func field<Content: View>(_ title: String,
                                       @ViewBuilder content: () -> Content) -> some View {
@@ -413,5 +503,20 @@ struct SettingsPanel: View {
                 .foregroundStyle(.white.opacity(0.7))
             content()
         }
+    }
+
+    private var appVersion: String {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+        return "\(v) (\(b))"
+    }
+
+    private var updatesStatusText: String {
+        if let d = updater.lastUpdateCheckDate {
+            return "Last checked \(d.formatted(date: .abbreviated, time: .shortened))"
+        }
+        return UpdateController.updatesConfigured
+            ? "Automatic checks enabled"
+            : "Auto-update not configured yet"
     }
 }

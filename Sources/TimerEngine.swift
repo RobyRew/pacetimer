@@ -187,7 +187,9 @@ final class TimerEngine: ObservableObject {
     // MARK: Accessibility + keystroke synthesis
 
     private func ensureAccessibilityPermission() -> Bool {
-        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        // Documented constant value of `kAXTrustedCheckOptionPrompt` (a non-Sendable
+        // imported global that Swift 6 won't let us reference directly).
+        let key = "AXTrustedCheckOptionPrompt"
         return AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
     }
 

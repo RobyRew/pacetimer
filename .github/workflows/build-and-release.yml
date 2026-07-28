@@ -1,0 +1,218 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  SCHEME: PaceTimer
+  PRODUCT_NAME: PeaceTimer
+  # Match the dev Mac: Xcode 26.x on the macos-26 arm64 image. Older Xcode ignores
+  # the project's Swift 6 settings and can't compile the Liquid Glass `.icon`.
+  XCODE_VERSION: '26.3'
+
+jobs:
+  build:
+    name: Build & Package
+    runs-on: macos-26
+    timeout-minutes: 40
+    outputs:
+      version: ${{ steps.package.outputs.VERSION }}
+      prerelease_tag: ${{ steps.package.outputs.PRERELEASE_TAG }}
+      prerelease_version: ${{ steps.package.outputs.PRERELEASE_VERSION }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s "/Applications/Xcode_${XCODE_VERSION}.app/Contents/Developer" || {
+            echo "::warning::Xcode ${XCODE_VERSION} not found; using latest-stable"
+            ls /Applications | grep -i '^Xcode' || true
+          }
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Resolve Swift packages (Sparkle)
+        run: xcodebuild -resolvePackageDependencies -scheme "$SCHEME" -project "$PRODUCT_NAME.xcodeproj"
+
+      - name: Build (Release)
+        run: |
+          # Monotonic CFBundleVersion so Sparkle can order releases (the project's
+          # CURRENT_PROJECT_VERSION is a fixed 1). Ad-hoc signing ("-") so entitlements
+          # apply with no Apple certs; every nested binary is re-signed uniformly below.
+          xcodebuild \
+            -scheme "$SCHEME" \
+            -project "$PRODUCT_NAME.xcodeproj" \
+            -configuration Release \
+            -derivedDataPath build \
+            -destination 'platform=macOS' \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            DEVELOPMENT_TEAM="" \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            clean build
+
+      - name: Re-sign uniformly (ad-hoc, inside-out) & verify
+        run: |
+          # DYLD kills the app if the process and a mapped framework carry different
+          # Team IDs. Re-sign every nested Sparkle binary and then the app itself with
+          # the SAME ad-hoc identity, inside-out. Plain ad-hoc (no runtime hardening
+          # option here) launches everywhere without library-validation rejections.
+          APP="build/Build/Products/Release/$PRODUCT_NAME.app"
+          SPK="$APP/Contents/Frameworks/Sparkle.framework"
+          for target in \
+            "$SPK/Versions/B/XPCServices/Downloader.xpc" \
+            "$SPK/Versions/B/XPCServices/Installer.xpc" \
+            "$SPK/Versions/B/Autoupdate" \
+            "$SPK/Versions/B/Updater.app" \
+            "$SPK"; do
+            [ -e "$target" ] && codesign --force --sign - --preserve-metadata=entitlements "$target"
+          done
+          codesign --force --sign - --preserve-metadata=entitlements "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Package .zip + styled .dmg
+        id: package
+        run: |
+          set -euo pipefail
+          APP_DIR="build/Build/Products/Release"
+          APP_PATH="$APP_DIR/$PRODUCT_NAME.app"
+          test -d "$APP_PATH" || { echo "::error::App not found at $APP_PATH"; find build -name '*.app'; exit 1; }
+
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist")
+          git fetch --tags --force --quiet || true
+          ALPHA_N=$(( $(git tag -l "v$VERSION-alpha.*" | wc -l | tr -d ' ') + 1 ))
+          echo "VERSION=$VERSION"                          >> "$GITHUB_OUTPUT"
+          echo "PRERELEASE_VERSION=$VERSION-alpha.$ALPHA_N" >> "$GITHUB_OUTPUT"
+          echo "PRERELEASE_TAG=v$VERSION-alpha.$ALPHA_N"    >> "$GITHUB_OUTPUT"
+
+          # ZIP (ditto preserves macOS metadata + the code signature).
+          ( cd "$APP_DIR" && ditto -c -k --keepParent "$PRODUCT_NAME.app" "$GITHUB_WORKSPACE/$PRODUCT_NAME-$VERSION.zip" )
+
+          # Styled drag-to-Applications DMG. create-dmg drives Finder via AppleScript
+          # and can be flaky on CI → 3 attempts, then a plain hdiutil fallback so a
+          # release never dies over cosmetics.
+          brew install create-dmg
+          DMG="$GITHUB_WORKSPACE/$PRODUCT_NAME-$VERSION.dmg"
+          STAGE=$(mktemp -d); cp -R "$APP_PATH" "$STAGE/"
+          FANCY_OK=""
+          for attempt in 1 2 3; do
+            rm -f "$DMG"
+            if create-dmg \
+                --volname "$PRODUCT_NAME" \
+                --background "$GITHUB_WORKSPACE/Packaging/dmg-background.tiff" \
+                --window-pos 200 120 --window-size 660 400 \
+                --icon-size 128 --text-size 13 \
+                --icon "$PRODUCT_NAME.app" 165 190 \
+                --hide-extension "$PRODUCT_NAME.app" \
+                --app-drop-link 495 190 \
+                --no-internet-enable \
+                "$DMG" "$STAGE"; then FANCY_OK=1; break; fi
+            echo "create-dmg attempt $attempt failed — retrying…"; sleep 5
+          done
+          if [ -z "$FANCY_OK" ]; then
+            echo "::warning::create-dmg failed 3× — plain hdiutil fallback"
+            rm -f "$DMG"
+            hdiutil create -volname "$PRODUCT_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG"
+          fi
+
+          # Verify the DMG mounts and carries the installer layout.
+          MOUNT=$(mktemp -d)
+          hdiutil attach "$DMG" -nobrowse -readonly -mountpoint "$MOUNT"
+          test -d "$MOUNT/$PRODUCT_NAME.app" || { echo "::error::app missing from DMG"; hdiutil detach "$MOUNT"; exit 1; }
+          hdiutil detach "$MOUNT"
+          ls -la "$GITHUB_WORKSPACE"/$PRODUCT_NAME-*
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PeaceTimer-${{ steps.package.outputs.VERSION }}
+          path: |
+            PeaceTimer-*.zip
+            PeaceTimer-*.dmg
+          retention-days: 30
+
+  # Alpha pre-release on every push to main (unsigned build for testing).
+  pre-release:
+    name: Pre-release (Alpha)
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+    env:
+      # Empty until you add the repo secret — the appcast steps then no-op (CI stays green).
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: PeaceTimer-*
+          merge-multiple: true
+
+      - name: Create alpha pre-release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.build.outputs.prerelease_tag }}
+          name: "PeaceTimer ${{ needs.build.outputs.prerelease_version }}"
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            ### ⚡ Automatic alpha build
+            **Version:** `${{ needs.build.outputs.prerelease_version }}`
+            **Commit:** `${{ github.sha }}`
+
+            > ⚠️ Unsigned build. To open: right-click the app → Open → Open,
+            > or run `xattr -cr PeaceTimer.app`.
+          files: |
+            PeaceTimer-*.zip
+            PeaceTimer-*.dmg
+
+      - name: Build signed appcast (Sparkle) — only if key configured
+        if: ${{ env.SPARKLE_PRIVATE_KEY != '' }}
+        env:
+          ZIP: PeaceTimer-${{ needs.build.outputs.version }}.zip
+          DOWNLOAD_URL: https://github.com/${{ github.repository }}/releases/download/${{ needs.build.outputs.prerelease_tag }}/PeaceTimer-${{ needs.build.outputs.version }}.zip
+          SHORT_VERSION: ${{ needs.build.outputs.prerelease_version }}
+          BUILD_VERSION: ${{ github.run_number }}
+          CHANNEL: beta
+          FEED_URL: https://robyrew.github.io/pacetimer/appcast.xml
+          NOTES: ${{ github.event.head_commit.message }}
+        run: |
+          chmod +x Scripts/publish_appcast.sh
+          Scripts/publish_appcast.sh
+
+      - name: Setup Pages
+        if: ${{ env.SPARKLE_PRIVATE_KEY != '' }}
+        uses: actions/configure-pages@v5
+      - name: Upload appcast artifact
+        if: ${{ env.SPARKLE_PRIVATE_KEY != '' }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy appcast to Pages
+        if: ${{ env.SPARKLE_PRIVATE_KEY != '' }}
+        uses: actions/deploy-pages@v4

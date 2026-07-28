@@ -56,11 +56,13 @@ enum DisplayMode: String, CaseIterable, Identifiable {
 struct PaceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var engine = TimerEngine()
+    @StateObject private var updater = UpdateController()
     @AppStorage("displayMode") private var displayModeRaw = DisplayMode.menuBarOnly.rawValue
 
     var body: some Scene {
         MenuBarExtra {
             MainPopOverView(engine: engine, displayModeRaw: $displayModeRaw)
+                .environmentObject(updater)
                 .frame(width: 340)
         } label: {
             Image(nsImage: AppIconView.menuBarImage(active: engine.isRunning))

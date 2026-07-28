@@ -1,6 +1,5 @@
 # XcodeGen spec. Generate the project with:  xcodegen generate
-# (brew install xcodegen)  — or just drag Sources/ + Resources/ into a new
-# "macOS App" target in Xcode and set the build settings below by hand.
+# (brew install xcodegen). CI does this automatically.
 
 name: PaceTimer
 options:
@@ -8,6 +7,12 @@ options:
   deploymentTarget:
     macOS: "14.0"
   createIntermediateGroups: true
+
+# Sparkle auto-update framework (SwiftPM).
+packages:
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
 
 settings:
   base:
@@ -19,8 +24,13 @@ settings:
     CODE_SIGN_ENTITLEMENTS: PaceTimer.entitlements
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
-    SWIFT_VERSION: "5.9"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
+    # Latest toolchain: Swift 6 with Xcode 26's "approachable concurrency" —
+    # everything is MainActor-isolated by default, which fits a UI app and keeps
+    # the strict-concurrency checker quiet without scattering @MainActor everywhere.
+    SWIFT_VERSION: "6.0"
+    SWIFT_APPROACHABLE_CONCURRENCY: YES
+    SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
 
 targets:
   PaceTimer:
@@ -29,6 +39,8 @@ targets:
     sources:
       - Sources
       - Assets.xcassets        # contains AppIcon.icon (native Liquid Glass icon)
+    dependencies:
+      - package: Sparkle
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.robyrew.peacetimer

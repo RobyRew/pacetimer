@@ -65,7 +65,9 @@ final class AccessibilityPermission: ObservableObject {
     /// Shows the system "grant Accessibility" prompt. Call this only from an explicit
     /// user action — never automatically at launch.
     func request() {
-        let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+        // `kAXTrustedCheckOptionPrompt` is imported as a non-Sendable global var
+        // (Swift 6 rejects touching it); its value is this documented constant string.
+        let key = "AXTrustedCheckOptionPrompt"
         _ = AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
         startPolling()
     }
