@@ -13,3 +13,6 @@ xcuserdata/
 # Local release artifacts (CI produces these on the runner)
 *.zip
 *.dmg
+
+# Intermediate iconset (AppIcon.icns is the committed artifact)
+Packaging/AppIcon.iconset/

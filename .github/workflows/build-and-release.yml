@@ -111,11 +111,16 @@ jobs:
           brew install create-dmg
           DMG="$GITHUB_WORKSPACE/$PRODUCT_NAME-$VERSION.dmg"
           STAGE=$(mktemp -d); cp -R "$APP_PATH" "$STAGE/"
+          # Use the app's own icon as the mounted volume's icon.
+          VOLICON=$(ls "$APP_PATH/Contents/Resources/"*.icns 2>/dev/null | head -1 || true)
+          VOLICON_ARGS=()
+          [ -n "$VOLICON" ] && VOLICON_ARGS=(--volicon "$VOLICON")
           FANCY_OK=""
           for attempt in 1 2 3; do
             rm -f "$DMG"
             if create-dmg \
                 --volname "$PRODUCT_NAME" \
+                "${VOLICON_ARGS[@]}" \
                 --background "$GITHUB_WORKSPACE/Packaging/dmg-background.tiff" \
                 --window-pos 200 120 --window-size 660 400 \
                 --icon-size 128 --text-size 13 \
