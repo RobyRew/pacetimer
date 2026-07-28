@@ -14,7 +14,7 @@ import AppKit
 
 struct MainPopOverView: View {
     @ObservedObject var engine: TimerEngine
-    @Binding var displayModeRaw: String
+    @AppStorage("displayMode") private var displayModeRaw = DisplayMode.menuBarOnly.rawValue
 
     @State private var showSettings = false
     @State private var lastHapticMilestone = -1
@@ -25,7 +25,7 @@ struct MainPopOverView: View {
         ZStack {
             background
             if showSettings {
-                SettingsPanel(engine: engine, displayModeRaw: $displayModeRaw, showSettings: $showSettings)
+                    SettingsPanel(engine: engine, displayModeRaw: $displayModeRaw, showSettings: $showSettings)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             } else {
                 mainContent
@@ -51,6 +51,7 @@ struct MainPopOverView: View {
             header
             stretchTrack
             readout
+            appPicker
             promptField
             controls
             footer
@@ -164,17 +165,47 @@ struct MainPopOverView: View {
         }
     }
 
-    // MARK: Prompt field (on the main screen)
+    // MARK: App picker (main screen)
 
+    /// Choose which app is brought to the front when the timer ends: the known AI
+    /// presets first, then every other app installed on this Mac (untested — picked
+    /// at your own risk).
+    private var appPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "app.badge")
+                Text("Target app")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.7))
+
+            Picker("", selection: $engine.appTarget) {
+                Section("AI apps") {
+                    ForEach(AppTarget.presets) { Text($0.name).tag($0) }
+                }
+                Section("All installed apps") {
+                    ForEach(AppTarget.installed) { Text($0.name).tag($0) }
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .tint(AppConfig.accent)
+        }
+    }
+
+    // MARK: Message field (main screen)
+
+    /// One-shot message for this session. Empty ⇒ the default message is used.
+    /// Whatever is typed here is wiped as soon as it has been sent once.
     private var promptField: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
                 Image(systemName: "text.cursor")
-                Text("Note to paste on finish")
+                Text("Message for this run")
                     .font(.system(size: 11, weight: .semibold))
                 Spacer()
-                if !engine.notes.isEmpty {
-                    Button { engine.notes = "" } label: {
+                if !engine.oneShotNote.isEmpty {
+                    Button { engine.oneShotNote = "" } label: {
                         Image(systemName: "xmark.circle.fill")
                     }
                     .buttonStyle(.plain)
@@ -184,13 +215,14 @@ struct MainPopOverView: View {
             .foregroundStyle(.white.opacity(0.7))
 
             ZStack(alignment: .topLeading) {
-                if engine.notes.isEmpty {
-                    Text("Type a prompt…")
+                if engine.oneShotNote.isEmpty {
+                    Text("Default: “\(engine.notes)” — type to override once")
                         .foregroundStyle(.white.opacity(0.3))
+                        .font(.system(size: 12))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 6)
                 }
-                TextEditor(text: $engine.notes)
+                TextEditor(text: $engine.oneShotNote)
                     .scrollContentBackground(.hidden)
                     .font(.system(size: 12))
                     .frame(height: 52)
@@ -199,6 +231,12 @@ struct MainPopOverView: View {
             .background(Color.white.opacity(0.06))
             .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Color.white.opacity(0.12)))
+
+            if !engine.oneShotNote.isEmpty {
+                Text("Clears itself after it runs once.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
         }
     }
 
@@ -342,16 +380,18 @@ struct SettingsPanel: View {
 
     private var automationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader("When the timer ends", nil)
-            field("Bring this app to the front") {
-                Picker("", selection: $engine.target) {
-                    ForEach(AITarget.allCases) { Text($0.displayName).tag($0) }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
+            sectionHeader("When the timer ends",
+                          "The target app is chosen on the main screen.")
+            field("Default message") {
+                TextField("continue", text: $engine.notes)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12))
             }
-            toggleRow("Auto-paste my note & press Return",
-                      "When on, PeaceTimer pastes your saved note into the target app and hits Return automatically — no confirmation.",
+            Text("Used whenever you haven't typed a one-off message on the main screen.")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.4))
+            toggleRow("Auto-paste the message & press Return",
+                      "When on, PeaceTimer pastes the message into the target app and hits Return automatically — no confirmation.",
                       isOn: $engine.unattendedAutomation)
         }
     }

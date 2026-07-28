@@ -51,35 +51,37 @@ enum DisplayMode: String, CaseIterable, Identifiable {
 }
 
 // MARK: - App entry point
+
 @main
 struct PaceApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var engine = TimerEngine()
-    @StateObject private var updater = UpdateController()
-    @AppStorage("displayMode") private var displayModeRaw = DisplayMode.menuBarOnly.rawValue
 
+    // The menu-bar item is managed by `StatusItemController` (AppKit) rather than
+    // `MenuBarExtra`, because MenuBarExtra exposes no mouse events — and the
+    // drag-from-the-icon gesture needs them. This scene therefore stays empty.
     var body: some Scene {
-        MenuBarExtra {
-            MainPopOverView(engine: engine, displayModeRaw: $displayModeRaw)
-                .environmentObject(updater)
-                .frame(width: 340)
-        } label: {
-            Image(nsImage: AppIconView.menuBarImage(active: engine.isRunning))
-        }
-        .menuBarExtraStyle(.window)
+        Settings { EmptyView() }
     }
 }
 
 // MARK: - App delegate
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    let engine = TimerEngine()
+    let updater = UpdateController()
+    private var statusItemController: StatusItemController?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // 1. Set the initial activation policy (Dock vs Menu Bar only)
         let raw = UserDefaults.standard.string(forKey: "displayMode")
             ?? DisplayMode.menuBarOnly.rawValue
         let mode = DisplayMode(rawValue: raw) ?? .menuBarOnly
         NSApp.setActivationPolicy(mode.activationPolicy)
-        
-        // 2. Accessibility: prompt at most once ever (first-run discovery), then stay
+
+        // 2. Menu-bar item + drag-to-set-timer gesture.
+        statusItemController = StatusItemController(engine: engine, updater: updater)
+
+        // 3. Accessibility: prompt at most once ever (first-run discovery), then stay
         //    silent. Re-prompting on every launch is what makes unsigned rebuilds nag
         //    forever — instead, Settings shows a live status row with a "Grant…" button.
         AccessibilityPermission.shared.requestOnceOnFirstLaunch()

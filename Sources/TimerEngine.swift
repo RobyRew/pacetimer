@@ -17,7 +17,7 @@ import ApplicationServices
 
 // MARK: - AI target apps
 
-enum AITarget: String, CaseIterable, Identifiable {
+nonisolated enum AITarget: String, CaseIterable, Identifiable {
     case claude, chatgpt, perplexity, cursor
 
     var id: String { rawValue }
@@ -41,6 +41,48 @@ enum AITarget: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Any installed app as a target
+
+/// A target the timer can bring to the front: either one of the known AI presets or
+/// any other app found on disk (untested — the user picks it at their own risk).
+nonisolated struct AppTarget: Identifiable, Hashable {
+    var name: String
+    var bundleID: String?
+    var path: String?
+
+    var id: String { bundleID ?? path ?? name }
+
+    static func preset(_ t: AITarget) -> AppTarget {
+        AppTarget(name: t.displayName, bundleID: t.bundleIDs.first, path: nil)
+    }
+
+    static let presets: [AppTarget] = AITarget.allCases.map(preset)
+
+    /// Every `.app` in the usual locations, sorted by name. Computed once and cached —
+    /// this is a disk scan, so don't call it in a view body repeatedly.
+    static let installed: [AppTarget] = {
+        let fm = FileManager.default
+        let dirs = ["/Applications", "/Applications/Utilities",
+                    "/System/Applications",
+                    NSHomeDirectory() + "/Applications"]
+        var seen = Set<String>()
+        var out: [AppTarget] = []
+        for dir in dirs {
+            guard let items = try? fm.contentsOfDirectory(atPath: dir) else { continue }
+            for item in items where item.hasSuffix(".app") {
+                let path = dir + "/" + item
+                let name = String(item.dropLast(4))
+                let bid = Bundle(path: path)?.bundleIdentifier
+                let key = bid ?? path
+                guard !seen.contains(key) else { continue }
+                seen.insert(key)
+                out.append(AppTarget(name: name, bundleID: bid, path: path))
+            }
+        }
+        return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }()
+}
+
 // MARK: - Engine
 
 @MainActor
@@ -52,10 +94,27 @@ final class TimerEngine: ObservableObject {
     @Published private(set) var isRunning = false
 
     // User content / settings
+
+    /// The message used when no one-shot note is set. Persisted.
     @Published var notes: String            { didSet { persist("notes", notes) } }
+    /// A one-off message for *this* session: it overrides `notes` for a single run and
+    /// is wiped as soon as it has been used once, so it never lingers into later runs.
+    @Published var oneShotNote: String = ""
     @Published var target: AITarget         { didSet { persist("target", target.rawValue) } }
     @Published var unattendedAutomation: Bool { didSet { persist("unattended", unattendedAutomation) } }
     @Published var preventSleep: Bool       { didSet { persist("preventSleep", preventSleep) } }
+
+    /// Selected app to bring forward. Stored as name+bundle id so any installed app works.
+    @Published var appTarget: AppTarget {
+        didSet {
+            persist("targetName", appTarget.name)
+            if let b = appTarget.bundleID { persist("targetBundleID", b) }
+            if let p = appTarget.path { persist("targetPath", p) }
+        }
+    }
+
+    /// Called whenever the countdown starts/stops, so the menu-bar glyph can update.
+    var onRunningChanged: ((Bool) -> Void)?
 
     private var ticker: Timer?
     private var endDate: Date?
@@ -64,10 +123,21 @@ final class TimerEngine: ObservableObject {
 
     init() {
         let d = UserDefaults.standard
-        notes                = d.string(forKey: "notes") ?? ""
+        // Default message is "continue" — the common "carry on" nudge. Editable in Settings.
+        notes                = d.string(forKey: "notes") ?? "continue"
         target               = AITarget(rawValue: d.string(forKey: "target") ?? "") ?? .claude
         unattendedAutomation = d.object(forKey: "unattended") as? Bool ?? false
         preventSleep         = d.object(forKey: "preventSleep") as? Bool ?? true
+        appTarget = AppTarget(name: d.string(forKey: "targetName") ?? "Claude",
+                              bundleID: d.string(forKey: "targetBundleID")
+                                        ?? AITarget.claude.bundleIDs.first,
+                              path: d.string(forKey: "targetPath"))
+    }
+
+    /// The text that will actually be sent: the one-shot note if present, else the default.
+    var effectiveMessage: String {
+        let one = oneShotNote.trimmingCharacters(in: .whitespacesAndNewlines)
+        return one.isEmpty ? notes.trimmingCharacters(in: .whitespacesAndNewlines) : one
     }
 
     // MARK: Countdown control
@@ -85,6 +155,7 @@ final class TimerEngine: ObservableObject {
 
     func pause() {
         isRunning = false
+        onRunningChanged?(false)
         ticker?.invalidate(); ticker = nil
         endSleepAssertion()
     }
@@ -98,6 +169,7 @@ final class TimerEngine: ObservableObject {
     private func beginCounting() {
         endDate = Date().addingTimeInterval(remaining)
         isRunning = true
+        onRunningChanged?(true)
         if preventSleep { beginSleepAssertion() }
         ticker?.invalidate()
         ticker = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
@@ -140,7 +212,7 @@ final class TimerEngine: ObservableObject {
     // MARK: Unattended Execution Pipeline
 
     private func executeOnFinish() async {
-        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmed = effectiveMessage
 
         if unattendedAutomation, !trimmed.isEmpty {
             // 1. Silent check for TCC Accessibility permissions
@@ -148,16 +220,19 @@ final class TimerEngine: ObservableObject {
                 notify("Grant Accessibility permission in System Settings to enable auto-paste.")
                 return
             }
-            
+
             // 2. Direct execution. No NSAlert. No asking for permission.
             pasteAndSubmit(trimmed)
-            
+
         } else {
-            // Passive fallback if automation is off or note is empty
+            // Passive fallback if automation is off or the message is empty
             notify(trimmed.isEmpty
                    ? "Your countdown finished."
-                   : "Your note is ready to paste into \(target.displayName).")
+                   : "Your message is ready to paste into \(appTarget.name).")
         }
+
+        // The one-shot note has now been used — wipe it so it can't leak into a later run.
+        oneShotNote = ""
     }
 
     private func activateTarget() async {
@@ -165,14 +240,20 @@ final class TimerEngine: ObservableObject {
         let config = NSWorkspace.OpenConfiguration()
         config.activates = true
 
-        for id in target.bundleIDs {
-            if let url = workspace.urlForApplication(withBundleIdentifier: id) {
-                _ = try? await workspace.openApplication(at: url, configuration: config)
-                return
-            }
+        // 1. Preferred: the selected app's bundle identifier.
+        if let bid = appTarget.bundleID,
+           let url = workspace.urlForApplication(withBundleIdentifier: bid) {
+            _ = try? await workspace.openApplication(at: url, configuration: config)
+            return
         }
-        
-        let byName = URL(fileURLWithPath: "/Applications/\(target.displayName).app")
+        // 2. Fall back to the on-disk path we recorded when it was picked.
+        if let path = appTarget.path, FileManager.default.fileExists(atPath: path) {
+            _ = try? await workspace.openApplication(at: URL(fileURLWithPath: path),
+                                                     configuration: config)
+            return
+        }
+        // 3. Last resort: guess by name in /Applications.
+        let byName = URL(fileURLWithPath: "/Applications/\(appTarget.name).app")
         if FileManager.default.fileExists(atPath: byName.path) {
             _ = try? await workspace.openApplication(at: byName, configuration: config)
         }
