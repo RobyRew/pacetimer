@@ -23,22 +23,16 @@ final class AccessibilityPermission: ObservableObject {
     @Published private(set) var isTrusted: Bool = AXIsProcessTrusted()
 
     private var pollTimer: Timer?
-    private var activationObserver: Any?
 
     private init() {
         // Re-check whenever the app comes forward — typically right after the user
-        // returns from System Settings.
-        activationObserver = NotificationCenter.default.addObserver(
+        // returns from System Settings. This is a process-lifetime singleton, so the
+        // observer never needs removing (no deinit).
+        NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil, queue: .main
         ) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
-        }
-    }
-
-    deinit {
-        if let activationObserver {
-            NotificationCenter.default.removeObserver(activationObserver)
         }
     }
 
