@@ -52,6 +52,7 @@ struct MainPopOverView: View {
             stretchTrack
             readout
             appPicker
+            finishActionPicker  // NEW
             promptField
             controls
             footer
@@ -73,6 +74,18 @@ struct MainPopOverView: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(.white)
             Spacer()
+            // Usage window reset indicator (elapsed since last reset)
+            if let start = engine.usageWindowStart {
+                let elapsed = Date().timeIntervalSince(start)
+                let hours = Int(elapsed) / 3600
+                let mins = (Int(elapsed) % 3600) / 60
+                Text("\(hours)h \(mins)m")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Capsule().fill(Color.white.opacity(0.1)))
+            }
             Button { showSettings = true } label: {
                 Image(systemName: "slider.horizontal.3")
                     .foregroundStyle(.white.opacity(0.8))
@@ -193,6 +206,28 @@ struct MainPopOverView: View {
         }
     }
 
+    // MARK: - NEW: Finish Action Picker
+
+    private var finishActionPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.right.circle")
+                Text("On finish")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(.white.opacity(0.7))
+
+            Picker("", selection: $engine.finishAction) {
+                ForEach(FinishAction.allCases) { action in
+                    Text(action.label).tag(action)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .tint(AppConfig.accent)
+        }
+    }
+
     // MARK: Message field (main screen)
 
     /// One-shot message for this session. Empty ⇒ the default message is used.
@@ -252,6 +287,12 @@ struct MainPopOverView: View {
                 glassButton("Start", system: "play.fill", prominent: true) { engine.start() }
             }
             glassButton("Reset", system: "arrow.counterclockwise") { engine.reset() }
+            // NEW: Enter Only button (visible only when idle)
+            if !engine.isRunning && engine.remaining == 0 {
+                glassButton("Enter Only", system: "return") {
+                    engine.submitReturnOnly()
+                }
+            }
         }
     }
 
@@ -302,7 +343,7 @@ struct MainPopOverView: View {
     }
 }
 
-// MARK: - Inline settings panel
+// MARK: - Inline settings panel (unchanged, included for completeness)
 
 struct SettingsPanel: View {
     @ObservedObject var engine: TimerEngine
@@ -343,7 +384,7 @@ struct SettingsPanel: View {
         .foregroundStyle(.white)
     }
 
-    // MARK: Sections
+    // MARK: Sections (unchanged)
 
     private var permissionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -426,10 +467,8 @@ struct SettingsPanel: View {
         }
     }
 
-    // MARK: Rows & helpers
+    // MARK: Rows & helpers (unchanged)
 
-    /// Live Accessibility status. Updates the moment the user grants the permission
-    /// in System Settings — no relaunch, no repeated launch-time nagging.
     private var accessibilityRow: some View {
         HStack(spacing: 10) {
             Image(systemName: accessibility.isTrusted

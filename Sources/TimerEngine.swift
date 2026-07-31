@@ -83,6 +83,24 @@ nonisolated struct AppTarget: Identifiable, Hashable {
     }()
 }
 
+// MARK: - Finish Action (new)
+
+/// What to do when the timer reaches zero.
+enum FinishAction: String, CaseIterable, Identifiable {
+    case sendMessage
+    case justReturn
+    case newChat
+
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .sendMessage: return "Send Message"
+        case .justReturn:  return "Just Return"
+        case .newChat:     return "New Chat"
+        }
+    }
+}
+
 // MARK: - Engine
 
 @MainActor
@@ -113,6 +131,21 @@ final class TimerEngine: ObservableObject {
         }
     }
 
+    // NEW: What to do on finish
+    @Published var finishAction: FinishAction {
+        didSet { persist("finishAction", finishAction.rawValue) }
+    }
+
+    // NEW: Usage window reset – file path and start date
+    @Published var usageResetFilePath: String {
+        didSet { persist("usageResetFilePath", usageResetFilePath) }
+    }
+    @Published var usageWindowStart: Date? {
+        didSet { persist("usageWindowStart", usageWindowStart) }
+    }
+    private var lastResetFileModDate: Date?
+    private var resetFileMonitorTimer: Timer?
+
     /// Called whenever the countdown starts/stops, so the menu-bar glyph can update.
     var onRunningChanged: ((Bool) -> Void)?
 
@@ -132,6 +165,16 @@ final class TimerEngine: ObservableObject {
                               bundleID: d.string(forKey: "targetBundleID")
                                         ?? AITarget.claude.bundleIDs.first,
                               path: d.string(forKey: "targetPath"))
+
+        // NEW: Finish action
+        finishAction = FinishAction(rawValue: d.string(forKey: "finishAction") ?? "") ?? .sendMessage
+
+        // NEW: Usage window reset file
+        usageResetFilePath = d.string(forKey: "usageResetFilePath") ?? "~/Library/Application Support/Claude/usage.json"
+        usageWindowStart = d.object(forKey: "usageWindowStart") as? Date
+
+        // Start monitoring the reset file
+        startMonitoringResetFile()
     }
 
     /// The text that will actually be sent: the one-shot note if present, else the default.
@@ -214,26 +257,97 @@ final class TimerEngine: ObservableObject {
     private func executeOnFinish() async {
         let trimmed = effectiveMessage
 
-        if unattendedAutomation, !trimmed.isEmpty {
-            // 1. Silent check for TCC Accessibility permissions
-            guard ensureAccessibilityPermission() else {
-                notify("Grant Accessibility permission in System Settings to enable auto-paste.")
-                return
+        // NEW: Branch based on finishAction
+        switch finishAction {
+        case .sendMessage:
+            if unattendedAutomation, !trimmed.isEmpty {
+                // 1. Silent check for TCC Accessibility permissions
+                guard ensureAccessibilityPermission() else {
+                    notify("Grant Accessibility permission in System Settings to enable auto-paste.")
+                    return
+                }
+
+                // 2. Direct execution. No NSAlert. No asking for permission.
+                pasteAndSubmit(trimmed)
+            } else {
+                // Passive fallback if automation is off or the message is empty
+                notify(trimmed.isEmpty
+                       ? "Your countdown finished."
+                       : "Your message is ready to paste into \(appTarget.name).")
             }
 
-            // 2. Direct execution. No NSAlert. No asking for permission.
-            pasteAndSubmit(trimmed)
+        case .justReturn:
+            submitReturnOnly()
 
-        } else {
-            // Passive fallback if automation is off or the message is empty
-            notify(trimmed.isEmpty
-                   ? "Your countdown finished."
-                   : "Your message is ready to paste into \(appTarget.name).")
+        case .newChat:
+            // Bring app to front, then press New Chat shortcut
+            await activateTarget()
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            let shortcut = newChatShortcut(for: appTarget)
+            postKey(shortcut.keyCode,
+                    command: shortcut.command,
+                    option: shortcut.option,
+                    control: shortcut.control)
         }
 
         // The one-shot note has now been used — wipe it so it can't leak into a later run.
         oneShotNote = ""
     }
+
+    // MARK: - NEW: Solo Return (Enter only)
+
+    func submitReturnOnly() {
+        Task { @MainActor in
+            guard ensureAccessibilityPermission() else {
+                notify("Accessibility permission required to press Return.")
+                return
+            }
+            await activateTarget()
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            postKey(0x24, command: false) // Return key
+        }
+    }
+
+    // MARK: - NEW: Focus frontmost app's text field
+
+    /// Heuristic: click at the centre of the frontmost window to focus the first text field.
+    private func focusFrontmostApp() {
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
+        guard let pid = frontApp.processIdentifier else { return }
+        let appElement = AXUIElementCreateApplication(pid)
+        var window: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &window)
+        guard result == .success, let windowElement = window as! AXUIElement? else { return }
+
+        var position: CFTypeRef?
+        AXUIElementCopyAttributeValue(windowElement, kAXPositionAttribute as CFString, &position)
+        var size: CFTypeRef?
+        AXUIElementCopyAttributeValue(windowElement, kAXSizeAttribute as CFString, &size)
+        guard let pos = position as? CGPoint, let sz = size as? CGSize else { return }
+        let center = CGPoint(x: pos.x + sz.width/2, y: pos.y + sz.height/2)
+
+        let click = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown,
+                            mouseCursorPosition: center, mouseButton: .left)
+        click?.post(tap: .cghidEventTap)
+        let clickUp = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp,
+                              mouseCursorPosition: center, mouseButton: .left)
+        clickUp?.post(tap: .cghidEventTap)
+    }
+
+    // MARK: - NEW: New Chat shortcut per app
+
+    private func newChatShortcut(for target: AppTarget) -> (keyCode: CGKeyCode, command: Bool, option: Bool, control: Bool) {
+        // Default: ⌘N
+        let defaultShortcut = (keyCode: CGKeyCode(0x2D), command: true, option: false, control: false)
+        guard let bid = target.bundleID else { return defaultShortcut }
+        // Customise per known app
+        if bid.contains("com.openai.chat") || bid.contains("com.anthropic") || bid.contains("ai.perplexity") || bid.contains("com.todesktop") {
+            return defaultShortcut // All use ⌘N (common)
+        }
+        return defaultShortcut
+    }
+
+    // MARK: - Activation
 
     private func activateTarget() async {
         let workspace = NSWorkspace.shared
@@ -262,11 +376,6 @@ final class TimerEngine: ObservableObject {
     // MARK: Accessibility + keystroke synthesis
 
     /// TRULY silent check — no system prompt, ever.
-    ///
-    /// This used to call `AXIsProcessTrustedWithOptions([prompt: true])`, which pops
-    /// the "grant Accessibility" dialog *every time the timer fired* — the cause of
-    /// the "it asks me every session even though it's enabled in Settings" bug.
-    /// Granting is handled once, on demand, from Settings ▸ Permissions.
     private func ensureAccessibilityPermission() -> Bool {
         AXIsProcessTrusted()
     }
@@ -279,29 +388,40 @@ final class TimerEngine: ObservableObject {
         Task { @MainActor in
             // Bring target app to absolute front
             await activateTarget()
-            
+
             // Allow app rendering and text-field focus
-            try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
-            
+            try? await Task.sleep(nanoseconds: 300_000_000)
+
+            // Optional: focus the text field (heuristic)
+            focusFrontmostApp()
+            try? await Task.sleep(nanoseconds: 200_000_000)
+
             // ⌘V (Paste)
             postKey(0x09, command: true)
-            
+
             // Allow pasteboard transfer
-            try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
-            
+            try? await Task.sleep(nanoseconds: 200_000_000)
+
             // Return Key (Submit)
             postKey(0x24, command: false)
         }
     }
 
-    private func postKey(_ keyCode: CGKeyCode, command: Bool) {
+    // MARK: - Extended postKey with modifiers
+
+    private func postKey(_ keyCode: CGKeyCode,
+                         command: Bool = false,
+                         option: Bool = false,
+                         control: Bool = false) {
         let source = CGEventSource(stateID: .combinedSessionState)
         let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let up   = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
-        if command {
-            down?.flags = .maskCommand
-            up?.flags   = .maskCommand
-        }
+        var flags = CGEventFlags()
+        if command { flags.insert(.maskCommand) }
+        if option  { flags.insert(.maskAlternate) }
+        if control { flags.insert(.maskControl) }
+        down?.flags = flags
+        up?.flags = flags
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
     }
@@ -323,9 +443,48 @@ final class TimerEngine: ObservableObject {
         }
     }
 
+    // MARK: - NEW: Usage window reset via file monitoring
+
+    private func startMonitoringResetFile() {
+        resetFileMonitorTimer?.invalidate()
+        resetFileMonitorTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.checkResetFile()
+        }
+        // Also check immediately
+        checkResetFile()
+    }
+
+    private func checkResetFile() {
+        let path = (usageResetFilePath as NSString).expandingTildeInPath
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+              let modDate = attrs[.modificationDate] as? Date else {
+            // File not found – reset stored date so we don't trigger on first appearance
+            lastResetFileModDate = nil
+            return
+        }
+        if lastResetFileModDate == nil {
+            lastResetFileModDate = modDate
+            return
+        }
+        if modDate > lastResetFileModDate! {
+            // File changed – reset the 5h usage window
+            usageWindowStart = Date()
+            persist("usageWindowStart", usageWindowStart!)
+            lastResetFileModDate = modDate
+            // Optionally post a notification for UI refresh
+            NotificationCenter.default.post(name: .usageWindowReset, object: nil)
+        }
+    }
+
     // MARK: Persistence helpers
 
-    private func persist(_ key: String, _ value: Any) {
+    private func persist(_ key: String, _ value: Any?) {
         UserDefaults.standard.set(value, forKey: key)
     }
+}
+
+// MARK: - Notification extension
+
+extension Notification.Name {
+    static let usageWindowReset = Notification.Name("usageWindowReset")
 }

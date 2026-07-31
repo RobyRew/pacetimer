@@ -86,4 +86,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         //    forever — instead, Settings shows a live status row with a "Grant…" button.
         AccessibilityPermission.shared.requestOnceOnFirstLaunch()
     }
+
+    // MARK: - Session Lock
+
+    /// Prevents quitting while a timer is running unless the user confirms.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard engine.isRunning else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.messageText = "Timer is running"
+        alert.informativeText = "Quitting will stop the countdown. Are you sure?"
+        alert.addButton(withTitle: "Quit Anyway")
+        alert.addButton(withTitle: "Cancel")
+        let response = alert.runModal()
+        return response == .alertSecondButtonReturn ? .terminateCancel : .terminateNow
+    }
+
+    /// When the user tries to relaunch the app (or clicks the Dock icon), bring the
+    /// existing instance to front instead of opening a new window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // Reopen the popover if needed – for now, we just activate the app.
+        NSApp.activate(ignoringOtherApps: true)
+        // Optionally, we could call statusItemController?.openPopover() here,
+        // but we'll keep it minimal – the user can click the menu bar icon.
+        return false // Prevent default window creation.
+    }
 }
