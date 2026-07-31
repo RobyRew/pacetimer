@@ -23,6 +23,13 @@ settings:
     INFOPLIST_FILE: Resources/Info.plist
     CODE_SIGN_ENTITLEMENTS: PaceTimer.entitlements
     CODE_SIGN_STYLE: Automatic
+    # Sign local builds with a STABLE identity. macOS TCC keys the Accessibility
+    # grant to the code signature: an ad-hoc/unsigned build gets a new identity on
+    # every compile, so the permission has to be granted again and again. With a
+    # real team the signature is stable and the grant sticks.
+    # (CI overrides this on the command line with CODE_SIGN_IDENTITY="-", so the
+    # unsigned release build is unaffected.)
+    DEVELOPMENT_TEAM: FJHAUWNNBH
     ENABLE_HARDENED_RUNTIME: YES
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     # Latest toolchain: Swift 6 with Xcode 26's "approachable concurrency" —
