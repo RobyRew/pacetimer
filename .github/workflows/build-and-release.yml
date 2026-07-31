@@ -24,6 +24,10 @@ jobs:
     name: Build & Package
     runs-on: macos-26
     timeout-minutes: 40
+    env:
+      # Surfaced as env because the `secrets` context can't be used in a step-level
+      # `if:` — steps gate on these being non-empty.
+      AC_API_KEY_P8: ${{ secrets.AC_API_KEY_P8 }}
     outputs:
       version: ${{ steps.package.outputs.VERSION }}
       prerelease_tag: ${{ steps.package.outputs.PRERELEASE_TAG }}
@@ -49,6 +53,50 @@ jobs:
       - name: Resolve Swift packages (Sparkle)
         run: xcodebuild -resolvePackageDependencies -scheme "$SCHEME" -project "$SCHEME.xcodeproj"
 
+      # Every push produces a genuinely new version: <base>.<run_number>, e.g. 1.0.42.
+      # Bump the base (MARKETING_VERSION in project.yml) for a real 1.1 / 2.0.
+      - name: Compute version
+        id: version
+        run: |
+          BASE=$(grep -E '^[[:space:]]+MARKETING_VERSION:' project.yml | head -1 | sed 's/.*: *//' | tr -d '"')
+          BASE="${BASE:-1.0}"
+          VERSION="${BASE}.${{ github.run_number }}"
+          echo "VERSION=$VERSION" | tee -a "$GITHUB_ENV" >> "$GITHUB_OUTPUT"
+          echo "▸ Building version $VERSION (build ${{ github.run_number }})"
+
+      # Optional signing. With MACOS_CERT_P12 + MACOS_CERT_PASSWORD set, the app is
+      # signed with a REAL identity, which gives it a stable TeamIdentifier — that is
+      # what makes the macOS Accessibility grant survive updates. Without the secrets
+      # this is skipped and the build falls back to ad-hoc, exactly as before.
+      - name: Import signing certificate (optional)
+        id: signing
+        env:
+          CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          if [ -z "$CERT_P12" ]; then
+            echo "identity=-" >> "$GITHUB_OUTPUT"
+            echo "::notice::No MACOS_CERT_P12 secret — building ad-hoc signed (unsigned)."
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD=$(uuidgen)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          echo "$CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
+            | grep -oE '"(Developer ID Application|Apple Development)[^"]*"' | head -1 | tr -d '"')
+          [ -n "$IDENTITY" ] || { echo "::error::Certificate imported but no codesigning identity found"; exit 1; }
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "::notice::Signing as: $IDENTITY"
+
       - name: Build (Release)
         run: |
           # Monotonic CFBundleVersion so Sparkle can order releases (the project's
@@ -65,27 +113,60 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=YES \
             DEVELOPMENT_TEAM="" \
+            MARKETING_VERSION="${{ steps.version.outputs.VERSION }}" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
             clean build
 
-      - name: Re-sign uniformly (ad-hoc, inside-out) & verify
+      - name: Re-sign uniformly (inside-out) & verify
+        env:
+          IDENTITY: ${{ steps.signing.outputs.identity }}
         run: |
           # DYLD kills the app if the process and a mapped framework carry different
           # Team IDs. Re-sign every nested Sparkle binary and then the app itself with
-          # the SAME ad-hoc identity, inside-out. Plain ad-hoc (no runtime hardening
-          # option here) launches everywhere without library-validation rejections.
+          # the SAME identity, inside-out.
           APP="build/Build/Products/Release/$PRODUCT_NAME.app"
           SPK="$APP/Contents/Frameworks/Sparkle.framework"
+
+          # A real certificate can carry the hardened runtime (required for notarising);
+          # an ad-hoc, team-less signature cannot — library validation would reject the
+          # frameworks at launch.
+          EXTRA=()
+          [ "$IDENTITY" != "-" ] && EXTRA=(--options runtime --timestamp)
+
           for target in \
             "$SPK/Versions/B/XPCServices/Downloader.xpc" \
             "$SPK/Versions/B/XPCServices/Installer.xpc" \
             "$SPK/Versions/B/Autoupdate" \
             "$SPK/Versions/B/Updater.app" \
             "$SPK"; do
-            [ -e "$target" ] && codesign --force --sign - --preserve-metadata=entitlements "$target"
+            [ -e "$target" ] && codesign --force --sign "$IDENTITY" "${EXTRA[@]}" \
+                --preserve-metadata=entitlements "$target"
           done
-          codesign --force --sign - --preserve-metadata=entitlements "$APP"
+          codesign --force --sign "$IDENTITY" "${EXTRA[@]}" \
+              --preserve-metadata=entitlements "$APP"
           codesign --verify --deep --strict --verbose=2 "$APP"
+          echo "── identity in the shipped bundle ──"
+          codesign -dv "$APP" 2>&1 | grep -E 'Signature|TeamIdentifier' || true
+
+      # Notarisation needs a *Developer ID Application* certificate (paid Apple
+      # Developer Program) plus App Store Connect API credentials. Gated on the
+      # secrets, so CI stays green until they exist.
+      - name: Notarise & staple (optional)
+        if: ${{ env.AC_API_KEY_P8 != '' && steps.signing.outputs.identity != '-' }}
+        env:
+          AC_API_KEY_ID: ${{ secrets.AC_API_KEY_ID }}
+          AC_API_ISSUER_ID: ${{ secrets.AC_API_ISSUER_ID }}
+        run: |
+          APP="build/Build/Products/Release/$PRODUCT_NAME.app"
+          KEY="$RUNNER_TEMP/ac_key.p8"
+          printf '%s' "$AC_API_KEY_P8" > "$KEY"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/notarise.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/notarise.zip" \
+            --key "$KEY" --key-id "$AC_API_KEY_ID" --issuer "$AC_API_ISSUER_ID" \
+            --wait --timeout 30m
+          xcrun stapler staple "$APP"
+          rm -f "$KEY"
+          echo "✓ notarised and stapled"
 
       - name: Package .zip + styled .dmg
         id: package
@@ -95,12 +176,12 @@ jobs:
           APP_PATH="$APP_DIR/$PRODUCT_NAME.app"
           test -d "$APP_PATH" || { echo "::error::App not found at $APP_PATH"; find build -name '*.app'; exit 1; }
 
+          # Version comes from the "Compute version" step (<base>.<run_number>), so
+          # every push is a new version and needs no alpha counter.
           VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist")
-          git fetch --tags --force --quiet || true
-          ALPHA_N=$(( $(git tag -l "v$VERSION-alpha.*" | wc -l | tr -d ' ') + 1 ))
-          echo "VERSION=$VERSION"                          >> "$GITHUB_OUTPUT"
-          echo "PRERELEASE_VERSION=$VERSION-alpha.$ALPHA_N" >> "$GITHUB_OUTPUT"
-          echo "PRERELEASE_TAG=v$VERSION-alpha.$ALPHA_N"    >> "$GITHUB_OUTPUT"
+          echo "VERSION=$VERSION"            >> "$GITHUB_OUTPUT"
+          echo "PRERELEASE_VERSION=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "PRERELEASE_TAG=v$VERSION"    >> "$GITHUB_OUTPUT"
 
           # ZIP (ditto preserves macOS metadata + the code signature).
           ( cd "$APP_DIR" && ditto -c -k --keepParent "$PRODUCT_NAME.app" "$GITHUB_WORKSPACE/$PRODUCT_NAME-$VERSION.zip" )
