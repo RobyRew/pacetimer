@@ -83,7 +83,7 @@ nonisolated struct AppTarget: Identifiable, Hashable {
     }()
 }
 
-// MARK: - Finish Action (new)
+// MARK: - Finish Action
 
 /// What to do when the timer reaches zero.
 enum FinishAction: String, CaseIterable, Identifiable {
@@ -313,7 +313,8 @@ final class TimerEngine: ObservableObject {
     /// Heuristic: click at the centre of the frontmost window to focus the first text field.
     private func focusFrontmostApp() {
         guard let frontApp = NSWorkspace.shared.frontmostApplication else { return }
-        guard let pid = frontApp.processIdentifier else { return }
+        // FIX: processIdentifier is non-optional, use directly
+        let pid = frontApp.processIdentifier
         let appElement = AXUIElementCreateApplication(pid)
         var window: CFTypeRef?
         let result = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &window)
@@ -436,9 +437,14 @@ final class TimerEngine: ObservableObject {
                 content.title = AppConfig.appName
                 content.body = message
                 content.sound = .default
-                UNUserNotificationCenter.current().add(
-                    UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-                )
+                // FIX: Use async version of add()
+                do {
+                    try await UNUserNotificationCenter.current().add(
+                        UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                    )
+                } catch {
+                    NSLog("Failed to send notification: \(error)")
+                }
             }
         }
     }
@@ -448,7 +454,10 @@ final class TimerEngine: ObservableObject {
     private func startMonitoringResetFile() {
         resetFileMonitorTimer?.invalidate()
         resetFileMonitorTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            self?.checkResetFile()
+            // FIX: Ensure call is on MainActor
+            Task { @MainActor in
+                self?.checkResetFile()
+            }
         }
         // Also check immediately
         checkResetFile()
