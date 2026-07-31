@@ -8,10 +8,14 @@
     <string>PeaceTimer</string>
     <key>CFBundleIdentifier</key>
     <string>com.robyrew.peacetimer</string>
+    <!-- Substituted by Xcode from the build settings, so CI can stamp a real version
+         per build. Hardcoding these means every build reports the same version, and
+         Sparkle can then never tell releases apart — it would keep re-offering the
+         same update forever. -->
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>$(MARKETING_VERSION)</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleExecutable</key>
